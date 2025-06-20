@@ -45,7 +45,7 @@ input_init :: proc(
 		key_states   = make(map[Keycode]Button_State),
 		mouse_states = make(map[Mousecode]Button_State),
 		mouse_mode   = .Unlocked,
-		allocator    = allocator
+		allocator    = allocator,
 		initialised  = true
 	}
 
