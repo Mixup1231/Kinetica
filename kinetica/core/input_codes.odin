@@ -1,8 +1,8 @@
-package engine
+package core
 
 import "vendor:glfw"
 
-// TODO(Mitchell): Add support for controllers and joysticks?
+// TODO(Mitchell): Add support for gamepads and joysticks?
 
 Keycode :: enum(i32) {
 	KEY_0                 = glfw.KEY_0,
@@ -127,15 +127,9 @@ Keycode :: enum(i32) {
 	KEY_X                 = glfw.KEY_X,
 	KEY_Y                 = glfw.KEY_Y,
 	KEY_Z                 = glfw.KEY_Z,
-	MOD_ALT               = glfw.MOD_ALT,
-	MOD_CAPS_LOCK         = glfw.MOD_CAPS_LOCK,
-	MOD_CONTROL           = glfw.MOD_CONTROL,
-	MOD_NUM_LOCK          = glfw.MOD_NUM_LOCK,
-	MOD_SHIFT             = glfw.MOD_SHIFT,
-	MOD_SUPER             = glfw.MOD_SUPER,
-	MOUSE_PASSTHROUGH     = glfw.MOUSE_PASSTHROUGH,
 }
 
+// NOTE(Mitchell): MOUSE_BUTTON_1 - 3 are MOUSE_BUTTON_LEFT, MIDDLE, and RIGHT
 Mousecode :: enum(i32) {
 	MOUSE_BUTTON_4        = glfw.MOUSE_BUTTON_4,
 	MOUSE_BUTTON_5        = glfw.MOUSE_BUTTON_5,

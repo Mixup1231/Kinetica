@@ -1,16 +1,18 @@
-package engine
+package core
 
 import "base:runtime"
 
 import "core:log"
+import "core:mem"
 
 import "vendor:glfw"
 
 Window :: struct {
-	handle: glfw.WindowHandle,
-	width:  i32,
-	height: i32,
-	title:  cstring,
+	handle:    glfw.WindowHandle,
+	width:     i32,
+	height:    i32,
+	title:     cstring,
+	allocator: mem.Allocator,
 
 	initialised: bool,
 }
@@ -24,7 +26,8 @@ window_create :: proc(
 	title:  cstring,
 	allocator := context.allocator,
 ) {
-	assert(!window.initialised)
+	context.allocator = allocator
+	ensure(!window.initialised)
 	ensure(bool(glfw.Init()))
 	
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
@@ -35,8 +38,11 @@ window_create :: proc(
 		width       = width,
 		height      = height,
 		title       = title,
+		allocator   = allocator,
 		initialised = true
 	}
+	
+	context.allocator = window.allocator
 	ensure(window.handle != nil)
 
 	input_init()
@@ -51,14 +57,14 @@ window_destroy :: proc() {
 }
 
 window_poll :: proc() {
-	assert(window.initialised)
+	ensure(window.initialised)
 
 	glfw.PollEvents()
 	input_poll()
 }
 
 window_should_close :: proc() -> bool {
-	assert(window.initialised)
+	ensure(window.initialised)
 	
 	return bool(glfw.WindowShouldClose(window.handle))
 }
@@ -75,7 +81,7 @@ window_get_size :: proc() -> (
  	width:  i32,
  	height: i32
 ) {
-	assert(window.initialised)
+	ensure(window.initialised)
 	
 	return glfw.GetWindowSize(window.handle)
 }
@@ -84,7 +90,7 @@ window_set_size :: proc(
 	width:  i32,
 	height: i32
 ) {
-	assert(window.initialised)
+	ensure(window.initialised)
 
 	glfw.SetWindowSize(window.handle, width, height)
 	window.width  = width
@@ -96,6 +102,9 @@ window_on_resize :: proc "c" (
 	width:  i32,
 	height: i32
 ) {
+	context = runtime.default_context()
+	ensure(window.initialised)
+	
 	window.width  = width
 	window.height = height
 }
