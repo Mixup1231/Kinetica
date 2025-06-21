@@ -47,6 +47,22 @@ window_create :: proc(
 	ensure(window.handle != nil)
 
 	input_init()
+	
+	app_info: VK_Application_Info = {
+		api_version = vk.MAKE_VERSION(1, 0, 0),
+		app_name    = app_name,
+		app_version = app_version,
+		extensions  = {},
+		layers      = {"VK_LAYER_KHRONOS_validation"},
+		features    = nil,
+	}
+
+	device_attribtes: VK_Device_Attributes = {
+		extensions    = {"VK_KHR_swapchain"},
+		present_modes = { .FIFO } 
+	}
+
+	vulkan_init(app_info, device_attribtes)
 }
 
 window_destroy :: proc() {

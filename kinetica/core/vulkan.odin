@@ -16,6 +16,7 @@ VK_Queue_Type :: enum {
 	Transfer,
 	Present,
 }
+VK_Queues :: distinct bit_set[VK_Queue_Type]
 
 VK_Instance :: struct {
 	handle:     vk.Instance,
@@ -79,14 +80,7 @@ VK_Application_Info :: struct {
 // NOTE(Mitchell): This is used for filtering suitable physical devices
 VK_Device_Attributes :: struct {
 	extensions:    []cstring,
-	formats:       []vk.SurfaceFormatKHR,
 	present_modes: []vk.PresentModeKHR,
-	queue_flags:   vk.QueueFlags,
-	type:          vk.PhysicalDeviceType,
-
-	// NOTE(Mitchell): Added these if you ever wanted to use them
-	supports_geometry_shader:     bool,
-	supports_tessellation_shader: bool,
 }
 
 @(private)
@@ -103,12 +97,17 @@ vulkan_init :: proc(
 	ensure(!vk_context.initialised)
 
 	instance := &vk_context.instance
+
+	log.info("Vulkan - Initialising:")
 	
 	// load process addresses
 	context.user_ptr = &instance.handle
 	get_proc_address :: proc(p: rawptr, name: cstring) {
 		(cast(^rawptr)p)^ = glfw.GetInstanceProcAddress((^vk.Instance)(context.user_ptr)^, name)
 	}
+	vk.load_proc_addresses(get_proc_address)
+
+	log.info("Vulkan - Functions: Successfully loaded instance functions")
 
 	/*---------------------*/
 	/* INITIALISE INSTANCE */	 
@@ -169,39 +168,29 @@ vulkan_init :: proc(
 	defer delete(physical_devices)
 	
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, raw_data(physical_devices)))
+		
+	queues_found := make(map[vk.QueueFlag][2]u32)
+	defer delete(queues_found)
 
-	queues := make(map[vk.QueueFlag][2]u32)
-	present_index: [2]u32 = {max(u32), max(u32)}
-
-	found_suitable_device := false
+	best_physical_device: vk.PhysicalDevice
 	device_loop: for physical_device in physical_devices {
-		// device properties
+		// type
 		device_properties: vk.PhysicalDeviceProperties
 		vk.GetPhysicalDeviceProperties(physical_device, &device_properties)
-		
-		if device_properties.deviceType != device_attributes.type do continue
+		if device_properties.deviceType != .DISCRETE_GPU do continue
 
-		// device features
-		device_features: vk.PhysicalDeviceFeatures
-		vk.GetPhysicalDeviceFeatures(physical_device, &device_features)
-
-		if device_attributes.supports_geometry_shader && !device_features.geometryShader do continue
-		if device_attributes.supports_tessellation_shader && !device_features.tessellationShader do continue
-
-		// device extensions
+		// extensions
 		device_extension_count: u32
 		device_extensions:      []vk.ExtensionProperties
 		vk_warn(vk.EnumerateDeviceExtensionProperties(physical_device, nil, &device_extension_count, nil))
 
-		if device_extension_count == 0 && len(device_attributes.extensions) > 0 do continue
-
 		device_extensions = make([]vk.ExtensionProperties, device_extension_count)
 		defer delete(device_extensions)
-
+		
 		vk_warn(vk.EnumerateDeviceExtensionProperties(physical_device, nil, &device_extension_count, raw_data(device_extensions)))
 		for requested_extension in device_attributes.extensions {
 			supports_requested_extension: bool
-
+			
 			for &supported_extension in device_extensions {
 				if requested_extension == cstring(&supported_extension.extensionName[0]) {
 					supports_requested_extension = true
@@ -213,54 +202,31 @@ vulkan_init :: proc(
 		}
 
 		// present modes
-		// NOTE(Mitchell):
-		// We always assume you will want to present, this could be bad if you want to run in a headless mode.
-		// Consider adding device_attributes.can_present filter.
 		present_mode_count: u32
 		present_modes:      []vk.PresentModeKHR
 		vk_warn(vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, vk_context.surface.handle, &present_mode_count, nil))
-
-		if present_mode_count == 0 do continue
 
 		present_modes = make([]vk.PresentModeKHR, present_mode_count)
 		defer delete(present_modes)
 
 		vk_warn(vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, vk_context.surface.handle, &present_mode_count, raw_data(present_modes)))
 		for requested_present_mode in device_attributes.present_modes {
-			supports_requested_present_mode: bool
+			supports_present_mode: bool
 
 			for supported_present_mode in present_modes {
 				if requested_present_mode == supported_present_mode {
-					supports_requested_present_mode = true
+					supports_present_mode = true
 					break
 				}
 			}
 
-			if !supports_requested_present_mode do continue device_loop
+			if !supports_present_mode do continue device_loop
 		}
-
-		// formats
-		format_count: u32
-		formats:      []vk.SurfaceFormatKHR
-		vk_warn(vk.GetPhysicalDeviceSurfaceFormatsKHR(physical_device, vk_context.surface.handle, &format_count, nil))
-
-		formats = make([]vk.SurfaceFormatKHR, format_count)
-		defer delete(formats)
-
-		vk_warn(vk.GetPhysicalDeviceSurfaceFormatsKHR(physical_device, vk_context.surface.handle, &format_count, raw_data(formats)))
-		for requested_format in device_attributes.formats {
-			supports_requested_format: bool
-
-			for supported_format in formats {
-				if requested_format == supported_format {
-					supports_requested_format = true
-					break
-				}
-			}
-
-			if !supports_requested_format do continue device_loop
-		}
-
+		
+		// queues
+		present_index:     [2]u32 = {max(u32), max(u32)}
+		queue_index_count: u32
+	
 		queue_family_count: u32
 		queue_families:     []vk.QueueFamilyProperties
 		vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nil)
@@ -269,62 +235,55 @@ vulkan_init :: proc(
 		defer delete(queue_families)
 
 		vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, raw_data(queue_families))
+		required_queues : vk.QueueFlags : {.GRAPHICS, .COMPUTE, .TRANSFER}
 		
-		for &queue_index in vk_context.device.queue_indices {
-			queue_index = max(u32)
-		}
-
-		index_count: u32
 		for family, i in queue_families {
-			for queue in device_attributes.queue_flags {
-				if queue in family.queueFlags && queue not_in queues {
-					queues[queue] = {u32(i), index_count}
-					index_count += 1
-				} else if queue in family.queueFlags && queue in queues {
-					stored_family := &queues[queue]
-
-					if index_count < stored_family[1] {
+			for queue in required_queues {
+				if queue in family.queueFlags && queue not_in queues_found {
+					queues_found[queue] = {u32(i), queue_index_count}
+					queue_index_count += 1
+				} else if queue in family.queueFlags && queue in queues_found {
+					stored_family := &queues_found[queue]
+					if queue_index_count < stored_family[1] {
 						stored_family[0] = u32(i)
-						stored_family[1] = index_count
-						index_count += 1
+						stored_family[1] = queue_index_count
+						queue_index_count += 1
 					}
-				}
+				} 
 
-				supports_present: b32
-				vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &supports_present))
-				if supports_present {
-					if present_index[1] > index_count {
-						present_index[0] = u32(i)
-						present_index[1] = index_count
-						index_count += 1
-					}
+				can_present: b32
+				vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
+				if can_present && queue_index_count < present_index[1] {
+					present_index[0] = u32(i)
+					present_index[1] = queue_index_count
+					queue_index_count += 1
 				}
 			}
-			index_count = 0
+			
+			queue_index_count = 0
+			clear(&queues_found)
 		}
 
-		//TODO(Mitchell): Make sure to check that the queues found match the requested queue types 
-		found_suitable_device = true
-		vk_context.device.physical = physical_device
+		// NOTE(Mitchell): 3 = (graphics, compute, and transfer)
+		if len(queues_found) != 3 && present_index[0] == max(u32) do continue
+
+		for queue, index_count_pair in queues_found {
+			#partial switch(queue) {
+			case .GRAPHICS: vk_context.device.queue_indices[.Graphics] = index_count_pair[0]
+			case .COMPUTE:  vk_context.device.queue_indices[.Compute]  = index_count_pair[0]
+			case .TRANSFER: vk_context.device.queue_indices[.Transfer] = index_count_pair[0]
+			}
+		}
 		
-		for queue in queues {
-			#partial switch queue {
-			case .GRAPHICS:
-				vk_context.device.queue_indices[.Graphics] = queues[queue][0]
-			case .COMPUTE:
-				vk_context.device.queue_indices[.Compute]  = queues[queue][0]
-			case .TRANSFER:
-				vk_context.device.queue_indices[.Transfer] = queues[queue][0]
-			}
-		}
-		vk_context.device.queue_indices[.Present] = present_index[0]
-
-		log.info("Vulkan - Physical Device: Successfully found suitable physical device")
+		best_physical_device = physical_device
 		break
 	}
-	ensure(found_suitable_device)
+	ensure(best_physical_device != nil)
 
+	vk_context.device.physical = best_physical_device
 
+	log.info("Vulkan - Physical Device: Successfully found physical device")
+	
 	/*---------------------------*/
 	/* INITIALISE LOGICAL DEVICE */
 	/*---------------------------*/
@@ -333,7 +292,6 @@ vulkan_init :: proc(
 
 	// NOTE(Mitchell): We need to know the set of queue indices and the count of queues for each of those indices
 	for index, _ in vk_context.device.queue_indices {
-		if index == max(u32) do continue                                            // not supported
 		if index in unique_queue_indices do (&unique_queue_indices[index])^ += 1    // in set already, increment count
 		if index not_in unique_queue_indices do unique_queue_indices[index] = 1     // not in set, insert
 	}
@@ -341,17 +299,15 @@ vulkan_init :: proc(
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
 	defer delete(queue_create_infos)
 
-	i: i32
+	i := 0
 	priority: f32 = 1
 	for index, count in unique_queue_indices {
-		queue_create_info: vk.DeviceQueueCreateInfo = {
+		queue_create_infos[i] = {
 			sType            = .DEVICE_QUEUE_CREATE_INFO,
 			queueFamilyIndex = index,
 			queueCount       = count,
 			pQueuePriorities = &priority,
 		}
-
-		queue_create_infos[i] = queue_create_info
 		i += 1
 	}
 
