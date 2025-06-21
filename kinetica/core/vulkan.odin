@@ -335,7 +335,7 @@ vulkan_init :: proc(
 	for index, _ in vk_context.device.queue_indices {
 		if index == max(u32) do continue                                            // not supported
 		if index in unique_queue_indices do (&unique_queue_indices[index])^ += 1    // in set already, increment count
-		if index not_in unique_queue_indices do unique_queue_indices[index] = index // not in set, insert
+		if index not_in unique_queue_indices do unique_queue_indices[index] = 1     // not in set, insert
 	}
 
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
