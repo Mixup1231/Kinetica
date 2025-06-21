@@ -6,6 +6,7 @@ import "core:log"
 import "core:mem"
 
 import "vendor:glfw"
+import vk "vendor:vulkan"
 
 Window :: struct {
 	handle:    glfw.WindowHandle,
@@ -21,9 +22,11 @@ Window :: struct {
 window: Window
 
 window_create :: proc(
-	width:  i32,
-	height: i32,
-	title:  cstring,
+	width:       i32,
+	height:      i32,
+	title:       cstring,
+	app_name:    cstring = "",
+	app_version: u32     = 0,
 	allocator := context.allocator,
 ) {
 	context.allocator = allocator
@@ -40,9 +43,7 @@ window_create :: proc(
 		title       = title,
 		allocator   = allocator,
 		initialised = true
-	}
-	
-	context.allocator = window.allocator
+	}	
 	ensure(window.handle != nil)
 
 	input_init()
