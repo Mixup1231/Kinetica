@@ -616,33 +616,9 @@ vulkan_create_shader_module :: proc(
 		pCode    = transmute(^u32)raw_data(shader_code),
 	}
 
-	vk_warn(vk.CreateShaderModule(device, &shader_module_create_info, nil, &shader_module))
+	vk_warn(vk.CreateShaderModule(vk_context.device.logical, &shader_module_create_info, nil, &shader_module))
 
 	return shader_module
-}
-
-@(private)
-vulkan_get_pipeline_shader_stage_create_info :: proc(
-	device:   vk.Device,
-	filepath: cstring,
-	stage:    vk.ShaderStageFlags,
-	name:     cstring,
-	allocator := context.allocator
-) -> (
-	pipeline_shader_stage_create_info: vk.PipelineShaderStageCreateInfo
-) {
-	ensure(vk_context.initialised)
-
-	module := vulkan_create_shader_module(device, filepath)
-
-	pipeline_shader_stage_create_info = {
-		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
-		stage  = stage,
-		module = module,
-		pName  = name  
-	}
-
-	return pipeline_shader_stage_create_info
 }
 
 @(private)
