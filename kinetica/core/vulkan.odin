@@ -267,13 +267,14 @@ vulkan_destroy :: proc() {
 	vk_context.initialised = false
 
 	// swapchain
-	vk_context.device.initialised = false
+	vk_context.swapchain.initialised = false
+	vk_context.swapchain.support_details.initialised = false
 	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
-	for image_view in vk_context.swapchain.image_views {
-		vk.DestroyImageView(vk_context.device.logical, image_view, nil)
-	}
+	for image_view in vk_context.swapchain.image_views do vk.DestroyImageView(vk_context.device.logical, image_view, nil)
 	delete(vk_context.swapchain.images)
 	delete(vk_context.swapchain.image_views)
+	delete(vk_context.swapchain.support_details.formats)
+	delete(vk_context.swapchain.support_details.present_modes)
 
 	// device
 	vk_context.device.initialised = false
