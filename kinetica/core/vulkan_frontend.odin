@@ -36,8 +36,8 @@ Descriptor_Set_Binding :: struct {
 	stages:  Shader_Stage_Types,
 }
 
+// TODO(Mitchell): Add PipelineShaderStageCreateInfos member
 Shader :: struct {
-	stages:          []Shader_Stage,
 	descriptor_sets: []Descriptor_Set,
 	pipeline_layout: Pipeline_Layout,
 }
