@@ -78,25 +78,17 @@ input_poll :: proc() {
 		
 		if new_state == glfw.PRESS {
 			switch (state^) {
-			case .Pressed:
-				state^ = .Held
-			case .Held:
-				state^ = .Held
-			case .Released:
-				state^ = .Pressed
-			case .Up:
-				state^ = .Pressed
+			case .Pressed:  state^ = .Held
+			case .Held:     state^ = .Held
+			case .Released: state^ = .Pressed
+			case .Up:       state^ = .Pressed
 			}
 		} else {
 			switch (state^) {
-			case .Pressed:
-				state^ = .Released
-			case .Held:
-				state^ = .Released
-			case .Released:
-				state^ = .Up
-			case .Up:
-				state^ = .Up
+			case .Pressed:  state^ = .Released
+			case .Held:     state^ = .Released
+			case .Released: state^ = .Up
+			case .Up:       state^ = .Up
 			}
 		}
 	}
@@ -108,25 +100,17 @@ input_poll :: proc() {
 		
 		if new_state == glfw.PRESS {
 			switch (state^) {
-			case .Pressed:
-				state^ = .Held
-			case .Held:
-				state^ = .Held
-			case .Released:
-				state^ = .Pressed
-			case .Up:
-				state^ = .Pressed
+			case .Pressed:  state^ = .Held
+			case .Held:     state^ = .Held
+			case .Released: state^ = .Pressed
+			case .Up:       state^ = .Pressed
 			}
 		} else {
 			switch (state^) {
-			case .Pressed:
-				state^ = .Released
-			case .Held:
-				state^ = .Released
-			case .Released:
-				state^ = .Up
-			case .Up:
-				state^ = .Up
+			case .Pressed:  state^ = .Released
+			case .Held:     state^ = .Released
+			case .Released: state^ = .Up
+			case .Up:       state^ = .Up
 			}
 		}
 	}

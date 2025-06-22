@@ -62,7 +62,23 @@ window_create :: proc(
 		present_modes = { .FIFO } 
 	}
 
-	vulkan_init(app_info, device_attribtes)
+	swapchain_attributes: VK_Swapchain_Attributes = {
+		present_mode = .FIFO,
+		extent       = {
+			width  = u32(width),
+			height = u32(height)
+		},
+		format       = {
+			format     = .R8G8B8A8_SRGB,
+			colorSpace = .SRGB_NONLINEAR, 
+		},
+		image_usage  = {
+			.COLOR_ATTACHMENT,
+			.TRANSFER_DST
+		}
+	}
+
+	vulkan_init(app_info, device_attribtes, swapchain_attributes)
 }
 
 window_destroy :: proc() {
