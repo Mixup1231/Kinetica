@@ -8,7 +8,11 @@ import "core:strings"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
-// TODO(Mitchell): Implement Vulkan debug logging (callback)
+// TODO(Mitchell):
+// Implement Vulkan debug logging (callback)
+// Caching valid physical devices
+// Code formatting
+// Testing
 
 VK_Queue_Type :: enum {
 	Graphics,
@@ -16,23 +20,23 @@ VK_Queue_Type :: enum {
 	Transfer,
 	Present,
 }
-VK_Queues :: distinct bit_set[VK_Queue_Type]
 
 VK_Instance :: struct {
 	handle:     vk.Instance,
 	extensions: []cstring,
 	layers:     []cstring,
 	app_info:   vk.ApplicationInfo,
+
+	initialised: bool,
 }
 
-// NOTE(Mitchell): This was created for api naming consistency (vk_context.surface.handle)
 VK_Surface :: struct {
 	handle: vk.SurfaceKHR
 }
 
-// NOTE(Mitchell): This is used for filtering suitable physical devices
 VK_Device_Attributes :: struct {
 	extensions:    []cstring,
+	features:      rawptr,
 	present_modes: []vk.PresentModeKHR,
 }
 
@@ -41,6 +45,8 @@ VK_Device :: struct {
 	physical:      vk.PhysicalDevice,
 	queue_indices: [VK_Queue_Type]u32,
 	queues:        [VK_Queue_Type]vk.Queue,
+
+	initialised: bool,
 }
 
 VK_Swapchain_Attributes :: struct {
@@ -64,6 +70,8 @@ VK_Swapchain :: struct {
 	image_views:     []vk.ImageView,
 	attributes:      VK_Swapchain_Attributes,
 	support_details: VK_Swapchain_Support_Details,
+
+	initialised: bool,
 }
 
 VK_Application_Info :: struct {
@@ -80,7 +88,6 @@ VK_Context :: struct {
 	surface:   VK_Surface,
 	device:    VK_Device,
 	swapchain: VK_Swapchain,
-	allocator: mem.Allocator,
 
 	initialised: bool,
 }
@@ -88,7 +95,6 @@ VK_Context :: struct {
 @(private)
 vk_context: VK_Context
 
-// NOTE(Mitchell): whats a SOLID? Feel free to pull these out into separate functions.
 vulkan_init :: proc(
 	app_info:             VK_Application_Info,
 	device_attributes:    VK_Device_Attributes,
@@ -117,7 +123,6 @@ vulkan_init :: proc(
 	/*---------------------*/
 	/* INITIALISE INSTANCE */	 
 	/*---------------------*/
-	// NOTE(Mitchell): I was unsure how we wanted to handle the other variables, so I've only filled in this
 	instance.app_info = {
 		sType              = .APPLICATION_INFO,
 		pEngineName        = "Kinetica",
@@ -150,6 +155,7 @@ vulkan_init :: proc(
 	vk_context.instance.app_info   = instance.app_info
 	vk_context.instance.extensions = app_info.extensions
 	vk_context.instance.layers     = app_info.layers
+	vk_context.initialised         = true
 
 	log.info("Vulkan: Successfully created Vulkan Instance")
 	log.info("Vulkan - Layers:", app_info.layers)
@@ -166,8 +172,9 @@ vulkan_init :: proc(
 	/* INITIALISE PHYSICAL DEVICE */
 	/*----------------------------*/
 	physical_device_count: u32
-	physical_devices:      []vk.PhysicalDevice
+	physical_devices: []vk.PhysicalDevice
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, nil))
+	ensure(physical_device_count != 0)
 	
 	physical_devices = make([]vk.PhysicalDevice, physical_device_count)
 	defer delete(physical_devices)
@@ -195,8 +202,8 @@ vulkan_init :: proc(
 
 	// NOTE(Mitchell): We need to know the set of queue indices and the count of queues for each of those indices
 	for index, _ in vk_context.device.queue_indices {
-		if index in unique_queue_indices do (&unique_queue_indices[index])^ += 1    // in set already, increment count
-		if index not_in unique_queue_indices do unique_queue_indices[index] = 1     // not in set, insert
+		if index in unique_queue_indices do (&unique_queue_indices[index])^ += 1 // in set already, increment count
+		if index not_in unique_queue_indices do unique_queue_indices[index] = 1  // not in set, insert
 	}
 
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
@@ -216,6 +223,7 @@ vulkan_init :: proc(
 
 	device_create_info: vk.DeviceCreateInfo = {
 		sType                   = .DEVICE_CREATE_INFO,
+		pNext                   = device_attributes.features,
 		queueCreateInfoCount    = u32(len(unique_queue_indices)),
 		pQueueCreateInfos       = raw_data(queue_create_infos),
 		enabledExtensionCount   = u32(len(device_attributes.extensions)),
@@ -225,6 +233,7 @@ vulkan_init :: proc(
 	}
 	
 	vk_fatal(vk.CreateDevice(vk_context.device.physical, &device_create_info, nil, &vk_context.device.logical))
+	
 	for index, queue in vk_context.device.queue_indices {
 		if index != max(u32) {
 			stored_index := &unique_queue_indices[index]
@@ -236,13 +245,44 @@ vulkan_init :: proc(
 	}
 
 	vk.load_proc_addresses_device(vk_context.device.logical)
+	vk_context.device.initialised = true
 	
 	log.info("Vulkan: Successfully created logical device")
 
 	/*----------------------*/
 	/* INITIALISE SWAPCHAIN */
 	/*----------------------*/
-	vulkan_create_swapchain_internal(&swapchain_attributes)
+	vulkan_create_swapchain(&swapchain_attributes)
+}
+
+vulkan_destroy :: proc() {
+	ensure(vk_context.initialised)
+	ensure(vk_context.instance.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	vk.QueueWaitIdle(vk_context.device.queues[.Graphics])
+	vk_context.initialised = false
+
+	// swapchain
+	vk_context.device.initialised = false
+	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
+	for image_view in vk_context.swapchain.image_views {
+		vk.DestroyImageView(vk_context.device.logical, image_view, nil)
+	}
+	delete(vk_context.swapchain.images)
+	delete(vk_context.swapchain.image_views)
+
+	// device
+	vk_context.device.initialised = false
+	vk.DestroyDevice(vk_context.device.logical, nil)
+
+	// surface
+	vk.DestroySurfaceKHR(vk_context.instance.handle, vk_context.surface.handle, nil)
+
+	// instance
+	vk_context.instance.initialised = false
+	vk.DestroyInstance(vk_context.instance.handle, nil)
 }
 
 @(private="file")
@@ -263,8 +303,9 @@ vulkan_rate_physical_device :: proc(
 	/*--------------*/
 	// extensions
 	device_extension_count: u32
-	device_extensions:      []vk.ExtensionProperties
+	device_extensions: []vk.ExtensionProperties
 	vk_warn(vk.EnumerateDeviceExtensionProperties(physical_device, nil, &device_extension_count, nil))
+	if device_extension_count == 0 do return false, 0, {}
 
 	device_extensions = make([]vk.ExtensionProperties, device_extension_count)
 	defer delete(device_extensions)
@@ -279,14 +320,14 @@ vulkan_rate_physical_device :: proc(
 				break
 			}
 		}
-
 		if !supports_requested_extension do return false, 0, {}
 	}
 
 	// present modes
 	present_mode_count: u32
-	present_modes:      []vk.PresentModeKHR
+	present_modes: []vk.PresentModeKHR
 	vk_warn(vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, vk_context.surface.handle, &present_mode_count, nil))
+	if present_mode_count == 0 do return false, 0, {}
 
 	present_modes = make([]vk.PresentModeKHR, present_mode_count)
 	defer delete(present_modes)
@@ -301,7 +342,6 @@ vulkan_rate_physical_device :: proc(
 				break
 			}
 		}
-
 		if !supports_present_mode do return false, 0, {}
 	}	
 	
@@ -310,12 +350,13 @@ vulkan_rate_physical_device :: proc(
 	defer delete(queues_found)
 	
 	required_queues : vk.QueueFlags : {.GRAPHICS, .COMPUTE, .TRANSFER}
-	present_index:     [2]u32 = {max(u32), max(u32)}
+	present_index: [2]u32 = {max(u32), max(u32)}
 	queue_index_count: u32
 	
 	queue_family_count: u32
-	queue_families:     []vk.QueueFamilyProperties
+	queue_families: []vk.QueueFamilyProperties
 	vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nil)
+	if queue_family_count == 0 do return false, 0, {}
 
 	queue_families = make([]vk.QueueFamilyProperties, queue_family_count)
 	defer delete(queue_families)
@@ -325,17 +366,18 @@ vulkan_rate_physical_device :: proc(
 		queue_index_count = 0
 		
 		for queue in required_queues {
-			if queue in family.queueFlags && queue not_in queues_found {
-				queues_found[queue] = {u32(i), queue_index_count}
-				queue_index_count += 1
-			} else if queue in family.queueFlags && queue in queues_found {
+			if queue in family.queueFlags && queue in queues_found {
 				stored_family := &queues_found[queue]
 				if queue_index_count < stored_family[1] {
 					stored_family[0] = u32(i)
 					stored_family[1] = queue_index_count
 					queue_index_count += 1
 				}
-			} 
+			} 	
+			if queue in family.queueFlags && queue not_in queues_found {
+				queues_found[queue] = {u32(i), queue_index_count}
+				queue_index_count += 1
+			}
 
 			can_present: b32
 			vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
@@ -347,16 +389,12 @@ vulkan_rate_physical_device :: proc(
 		}		
 	}
 
-	// NOTE(Mitchell): 3 = (graphics, compute, and transfer)
-	if len(queues_found) != 3 && present_index[0] == max(u32) do return false, 0, {}
-	
-	for queue in queues_found {
-		#partial switch (queue) {
-		case .GRAPHICS: queue_indices[.Graphics] = queues_found[queue][0]
-		case .COMPUTE:  queue_indices[.Compute]  = queues_found[queue][0]
-		case .TRANSFER: queue_indices[.Transfer] = queues_found[queue][0]
-		}
-	}
+	// failed to find required queues
+	if .GRAPHICS not_in queues_found || .COMPUTE not_in queues_found || .TRANSFER not_in queues_found do return false, 0, {}
+
+	queue_indices[.Graphics] = queues_found[.GRAPHICS][0]
+	queue_indices[.Compute]  = queues_found[.COMPUTE][0]
+	queue_indices[.Transfer] = queues_found[.TRANSFER][0]	
 
 	/*--------*/
 	/* RATING */	
@@ -369,16 +407,16 @@ vulkan_rate_physical_device :: proc(
 
 	// NOTE(Mitchell): We may want to play around with these numbers
 	rating += u64(device_properties.limits.maxImageDimension2D)
-	rating += u64(device_properties.limits.maxUniformBufferRange      / 1024)
-	rating += u64(device_properties.limits.maxStorageBufferRange      / 1024)
+	rating += u64(device_properties.limits.maxUniformBufferRange / 1024)
+	rating += u64(device_properties.limits.maxStorageBufferRange / 1024)
 	rating += u64(device_properties.limits.maxComputeSharedMemorySize / 512)
-	rating += u64(device_properties.limits.maxFramebufferWidth        / 64)
-	rating += u64(device_properties.limits.maxFramebufferHeight       / 64)
+	rating += u64(device_properties.limits.maxFramebufferWidth / 64)
+	rating += u64(device_properties.limits.maxFramebufferHeight / 64)
 	
 	if device_properties.deviceType == .DISCRETE_GPU do rating += 1000
-	if device_features.samplerAnisotropy             do rating += 1000
-	if device_features.geometryShader                do rating += 100
-	if device_features.tessellationShader            do rating += 100
+	if device_features.samplerAnisotropy do rating += 1000
+	if device_features.geometryShader do rating += 100
+	if device_features.tessellationShader do rating += 100
 
 	return true, rating, queue_indices
 }
@@ -391,8 +429,9 @@ vulkan_query_swapchain_support :: proc(
 	support_details: VK_Swapchain_Support_Details
 ) {
 	context.allocator = allocator
+	ensure(!vk_context.swapchain.support_details.initialised)
 
-	vk_fatal(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR( vk_context.device.physical, vk_context.surface.handle, &support_details.capabilities))
+	vk_fatal(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.device.physical, vk_context.surface.handle, &support_details.capabilities))
 
 	format_count: u32
 	vk_fatal(vk.GetPhysicalDeviceSurfaceFormatsKHR(vk_context.device.physical, vk_context.surface.handle, &format_count, nil))
@@ -413,12 +452,14 @@ vulkan_query_swapchain_support :: proc(
 	return support_details
 }
 
+// NOTE(Mitchell): This is a separate function because you need to recreate the swapchain on resize
 @(private="file")
-vulkan_create_swapchain_internal :: proc(
+vulkan_create_swapchain :: proc(
 	swapchain_attributes: ^VK_Swapchain_Attributes,
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
+	ensure(!vk_context.swapchain.initialised)
 	ensure(swapchain_attributes != nil)
 
 	vk_context.swapchain.attributes = swapchain_attributes^
@@ -435,7 +476,7 @@ vulkan_create_swapchain_internal :: proc(
 		delete(support_details.formats)
 		delete(support_details.present_modes)
 	}
-
+	
 	support_details^ = vulkan_query_swapchain_support()
 
 	if support_details.capabilities.currentExtent.width != max(u32) {
@@ -446,13 +487,14 @@ vulkan_create_swapchain_internal :: proc(
 			width  = max(support_details.capabilities.minImageExtent.width, attributes.extent.width),
 			height = max(support_details.capabilities.minImageExtent.height, attributes.extent.height),
 		}
-
 		swapchain_create_info.imageExtent = extent
 		attributes.extent = extent
 	}
 
 	image_count := support_details.capabilities.minImageCount+1
-	if support_details.capabilities.maxImageCount > 0 && image_count > support_details.capabilities.minImageCount do image_count = support_details.capabilities.maxImageCount
+	if support_details.capabilities.maxImageCount > 0 && image_count > support_details.capabilities.minImageCount {
+		image_count = support_details.capabilities.maxImageCount
+	}
 
 	swapchain_create_info.imageArrayLayers = 1
 	swapchain_create_info.minImageCount    = image_count
@@ -463,10 +505,9 @@ vulkan_create_swapchain_internal :: proc(
 		swapchain_create_info.imageSharingMode = .EXCLUSIVE
 	} else {
 		indices: []u32 = { queue_indices[.Graphics], queue_indices[.Present] }
-		
+		swapchain_create_info.pQueueFamilyIndices   = raw_data(indices)
 		swapchain_create_info.queueFamilyIndexCount = 2
 		swapchain_create_info.imageSharingMode      = .CONCURRENT
-		swapchain_create_info.pQueueFamilyIndices   = raw_data(indices)
 	}
 
 	swapchain_create_info.preTransform = support_details.capabilities.currentTransform
@@ -489,7 +530,7 @@ vulkan_create_swapchain_internal :: proc(
 	supports_requested_format: bool
 	for format in support_details.formats {
 		if format == attributes.format {
-			swapchain_create_info.imageFormat     = format.format
+			swapchain_create_info.imageFormat = format.format
 			swapchain_create_info.imageColorSpace = format.colorSpace
 			supports_requested_format = true
 			break
@@ -497,7 +538,7 @@ vulkan_create_swapchain_internal :: proc(
 	}
 
 	if !supports_requested_format {
-		swapchain_create_info.imageFormat     = support_details.formats[0].format
+		swapchain_create_info.imageFormat = support_details.formats[0].format
 		swapchain_create_info.imageColorSpace = support_details.formats[0].colorSpace
 		attributes.format = support_details.formats[0]
 	}
@@ -509,9 +550,17 @@ vulkan_create_swapchain_internal :: proc(
 	log.info("Vulkan: Successfully create the swapchain")
 
 	swapchain := &vk_context.swapchain
+	if swapchain.images == nil {
+		swapchain.images = make([]vk.Image, image_count)
+	} else {
+		ensure(u32(len(swapchain.images)) == image_count)
+	}
 	
-	if swapchain.images      == nil do swapchain.images      = make([]vk.Image, image_count)
-	if swapchain.image_views == nil do swapchain.image_views = make([]vk.ImageView, image_count) 
+	if swapchain.image_views == nil {
+		swapchain.image_views = make([]vk.ImageView, image_count)
+	} else {
+		ensure(u32(len(swapchain.images)) == image_count)
+	}
 
 	vk_fatal(vk.GetSwapchainImagesKHR(vk_context.device.logical, swapchain.handle, &image_count, raw_data(swapchain.images)))
 	for image, i in swapchain.images {
@@ -535,16 +584,14 @@ vulkan_create_swapchain_internal :: proc(
 	}
 }
 
-// NOTE(Mitchell): This is a temporary solution for Vulkan error checking, feel free to change it.
-vk_fatal :: #force_inline proc(result: vk.Result, location := #caller_location, msg: ..cstring) {
+vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
 		log.fatalf("%s Vulkan - Fatal %v: %s", location, result, msg)
 		os.exit(-1)
 	}
-} 
+}
 
-// NOTE(Mitchell): This is a temporary solution for Vulkan error checking, feel free to change it.
-vk_warn :: #force_inline proc(result: vk.Result, location := #caller_location, msg: ..cstring) {
+vk_warn :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
 		log.warnf("%s Vulkan - Warn %v: %s", location, result, msg)
 	}

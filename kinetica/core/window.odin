@@ -13,7 +13,6 @@ Window :: struct {
 	width:     i32,
 	height:    i32,
 	title:     cstring,
-	allocator: mem.Allocator,
 
 	initialised: bool,
 }
@@ -41,7 +40,6 @@ window_create :: proc(
 		width       = width,
 		height      = height,
 		title       = title,
-		allocator   = allocator,
 		initialised = true
 	}	
 	ensure(window.handle != nil)
@@ -49,7 +47,7 @@ window_create :: proc(
 	input_init()
 	
 	app_info: VK_Application_Info = {
-		api_version = vk.MAKE_VERSION(1, 0, 0),
+		api_version = vk.API_VERSION_1_3,
 		app_name    = app_name,
 		app_version = app_version,
 		extensions  = {},
@@ -57,22 +55,32 @@ window_create :: proc(
 		features    = nil,
 	}
 
+	dynamic_rendering_feature: vk.PhysicalDeviceDynamicRenderingFeaturesKHR = {
+		sType            = .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+		dynamicRendering = true,
+	}
+
 	device_attribtes: VK_Device_Attributes = {
-		extensions    = {"VK_KHR_swapchain"},
-		present_modes = { .FIFO } 
+		features      = &dynamic_rendering_feature,
+		present_modes = { .FIFO },
+		extensions    = {
+			vk.KHR_SWAPCHAIN_EXTENSION_NAME,
+			vk.KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+			vk.KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME
+		}
 	}
 
 	swapchain_attributes: VK_Swapchain_Attributes = {
 		present_mode = .FIFO,
-		extent       = {
+		extent = {
 			width  = u32(width),
 			height = u32(height)
 		},
-		format       = {
+		format = {
 			format     = .R8G8B8A8_SRGB,
 			colorSpace = .SRGB_NONLINEAR, 
 		},
-		image_usage  = {
+		image_usage = {
 			.COLOR_ATTACHMENT,
 			.TRANSFER_DST
 		}
@@ -85,6 +93,7 @@ window_destroy :: proc() {
 	ensure(window.initialised)
 
 	input_destroy()
+	vulkan_destroy()
 	glfw.DestroyWindow(window.handle)
 	glfw.Terminate()
 }
@@ -128,6 +137,16 @@ window_set_size :: proc(
 	glfw.SetWindowSize(window.handle, width, height)
 	window.width  = width
 	window.height = height
+}
+
+@(private)
+window_get_framebuffer_size :: proc() -> (
+	width:  i32,
+	height: i32,
+) {
+	ensure(window.initialised)
+
+	return glfw.GetFramebufferSize(window.handle)
 }
 
 @(private="file")

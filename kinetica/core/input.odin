@@ -25,7 +25,6 @@ Input :: struct {
 	mouse_pos:       [2]f64,
 	rel_mouse_pos:   [2]f64,
 	mouse_mode:      Mouse_Mode,
-	allocator:       mem.Allocator,
 
 	initialised: bool,
 }
@@ -42,20 +41,14 @@ input_init :: proc(
 	ensure(!input.initialised)
 
 	input = {
-		key_states   = make(map[Keycode]Button_State),
-		mouse_states = make(map[Mousecode]Button_State),
-		mouse_mode   = .Unlocked,
-		allocator    = allocator,
-		initialised  = true
+		key_states    = make(map[Keycode]Button_State),
+		mouse_states  = make(map[Mousecode]Button_State),
+		mouse_mode    = .Unlocked,
+		initialised   = true
 	}
 
-	for key in Keycode {
-		input.key_states[key] = .Up
-	}
-	
-	for button in Mousecode {
-		input.mouse_states[button] = .Up
-	}	
+	for key in Keycode do input.key_states[key] = .Up
+	for button in Mousecode do input.mouse_states[button] = .Up
 }
 
 @(private)
@@ -116,19 +109,14 @@ input_poll :: proc() {
 	}
 
 	// mouse pos
-	x, y                := glfw.GetCursorPos(window.handle)
-	prev_mouse_pos      := input.mouse_pos	
-	input.mouse_pos      = {x, y}
-	input.rel_mouse_pos  = input.mouse_pos - prev_mouse_pos
+	x, y := glfw.GetCursorPos(window.handle)
+	prev_mouse_pos := input.mouse_pos
+	
+	input.mouse_pos     = {x, y}
+	input.rel_mouse_pos = input.mouse_pos - prev_mouse_pos
 
 	// NOTE(Mitchell): recentre mouse when moved (while locked) to keep it relative to the window centre
-	if input.mouse_mode == .Locked {
-		glfw.SetCursorPos(
-			window.handle,
-			f64(window.width)  / 2,
-			f64(window.height) / 2
-		)
-	}	
+	if input.mouse_mode == .Locked do glfw.SetCursorPos(window.handle,f64(window.width) / 2, f64(window.height) / 2)
 }
 
 input_is_key_pressed :: proc(
