@@ -95,6 +95,7 @@ VK_Context :: struct {
 @(private)
 vk_context: VK_Context
 
+@(private)
 vulkan_init :: proc(
 	app_info:             VK_Application_Info,
 	device_attributes:    VK_Device_Attributes,
@@ -253,10 +254,10 @@ vulkan_init :: proc(
 	/* INITIALISE SWAPCHAIN */
 	/*----------------------*/
 	vulkan_create_swapchain(&swapchain_attributes)
-
 	vk_context.initialised = true
 }
 
+@(private)
 vulkan_destroy :: proc() {
 	ensure(vk_context.initialised)
 	ensure(vk_context.instance.initialised)
@@ -271,6 +272,7 @@ vulkan_destroy :: proc() {
 	vk_context.swapchain.support_details.initialised = false
 	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
 	for image_view in vk_context.swapchain.image_views do vk.DestroyImageView(vk_context.device.logical, image_view, nil)
+	
 	delete(vk_context.swapchain.images)
 	delete(vk_context.swapchain.image_views)
 	delete(vk_context.swapchain.support_details.formats)
@@ -589,6 +591,61 @@ vulkan_create_swapchain :: proc(
 	vk_context.swapchain.initialised = true
 }
 
+@(private)
+vulkan_create_shader_module :: proc(
+	device:   vk.Device,
+	filepath: cstring,
+	allocator := context.allocator
+) -> (
+	shader_module: vk.ShaderModule
+){
+	context.allocator = allocator
+	ensure(vk_context.initialised)
+
+	shader_code, read_file := os.read_entire_file(string(filepath))
+	if !read_file {
+		log.warn("Failed to read shader file: %s", filepath)
+		
+		return shader_module
+	}
+	defer delete(shader_code)
+
+	shader_module_create_info: vk.ShaderModuleCreateInfo = {
+		sType    = .SHADER_MODULE_CREATE_INFO,
+		codeSize = len(shader_code),
+		pCode    = transmute(^u32)raw_data(shader_code),
+	}
+
+	vk_warn(vk.CreateShaderModule(device, &shader_module_create_info, nil, &shader_module))
+
+	return shader_module
+}
+
+@(private)
+vulkan_get_pipeline_shader_stage_create_info :: proc(
+	device:   vk.Device,
+	filepath: cstring,
+	stage:    vk.ShaderStageFlags,
+	name:     cstring,
+	allocator := context.allocator
+) -> (
+	pipeline_shader_stage_create_info: vk.PipelineShaderStageCreateInfo
+) {
+	ensure(vk_context.initialised)
+
+	module := vulkan_create_shader_module(device, filepath)
+
+	pipeline_shader_stage_create_info = {
+		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+		stage  = stage,
+		module = module,
+		pName  = name  
+	}
+
+	return pipeline_shader_stage_create_info
+}
+
+@(private)
 vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
 		log.fatalf("%s Vulkan - Fatal %v: %s", location, result, msg)
@@ -596,6 +653,7 @@ vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location :=
 	}
 }
 
+@(private)
 vk_warn :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
 		log.warnf("%s Vulkan - Warn %v: %s", location, result, msg)
