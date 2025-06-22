@@ -253,6 +253,8 @@ vulkan_init :: proc(
 	/* INITIALISE SWAPCHAIN */
 	/*----------------------*/
 	vulkan_create_swapchain(&swapchain_attributes)
+
+	vk_context.initialised = true
 }
 
 vulkan_destroy :: proc() {
