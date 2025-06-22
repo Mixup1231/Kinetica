@@ -152,10 +152,10 @@ vulkan_init :: proc(
 
 	vk_fatal(vk.CreateInstance(&instance_create_info, nil, &vk_context.instance.handle))
 
-	vk_context.instance.app_info   = instance.app_info
-	vk_context.instance.extensions = app_info.extensions
-	vk_context.instance.layers     = app_info.layers
-	vk_context.initialised         = true
+	vk_context.instance.app_info    = instance.app_info
+	vk_context.instance.extensions  = app_info.extensions
+	vk_context.instance.layers      = app_info.layers
+	vk_context.instance.initialised = true
 
 	log.info("Vulkan: Successfully created Vulkan Instance")
 	log.info("Vulkan - Layers:", app_info.layers)
@@ -584,6 +584,8 @@ vulkan_create_swapchain :: proc(
 
 		log.info("Vulkan: Successfully create swapchain image-view", i+1)
 	}
+
+	vk_context.swapchain.initialised = true
 }
 
 vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
