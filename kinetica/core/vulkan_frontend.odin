@@ -38,6 +38,32 @@ Descriptor_Type :: enum(i32) {
 	Storage_Buffer = i32(vk.DescriptorType.STORAGE_BUFFER),
 }
 
+Primitive_Topology :: enum(i32) {
+	Point_List     = i32(vk.PrimitiveTopology.POINT_LIST),
+	Line_List      = i32(vk.PrimitiveTopology.LINE_LIST),
+	Line_Strip     = i32(vk.PrimitiveTopology.LINE_STRIP),
+	Triangle_List  = i32(vk.PrimitiveTopology.TRIANGLE_LIST),
+	Triangle_Strip = i32(vk.PrimitiveTopology.TRIANGLE_STRIP),
+	Triangle_Fan   = i32(vk.PrimitiveTopology.TRIANGLE_FAN),
+}
+
+Polygon_Mode :: enum(i32) {
+	Fill  = i32(vk.PolygonMode.FILL),
+	Line  = i32(vk.PolygonMode.LINE),
+	Point = i32(vk.PolygonMode.POINT),
+}
+
+Cull_Modes :: distinct bit_set[Cull_Mode]
+Cull_Mode :: enum(i32) {
+	Back  = i32(vk.CullModeFlag.BACK),
+	Front = i32(vk.CullModeFlag.FRONT),
+}
+
+Front_Face :: enum(i32) {
+	Clockwise         = i32(vk.FrontFace.CLOCKWISE),
+	Counter_Clockwise = i32(vk.FrontFace.COUNTER_CLOCKWISE),
+}
+
 // structs
 Vertex :: struct {
 	position: [3]f32,
@@ -61,6 +87,15 @@ Descriptor_Set_Binding :: struct {
 Shader :: struct {
 	shader_stages:   []Shader_Stage,
 	descriptor_sets: []Descriptor_Set,
+}
+
+Pipeline_Layout_Attributes :: struct {
+	viewport_count: u32,
+	scissor_count:  u32,
+	polygon_mode:   Polygon_Mode,
+	cull_mode:      Cull_Modes,
+	front_face:     Front_Face,
+	topology:       Primitive_Topology
 }
 
 Pipeline_Layout :: struct {
@@ -165,7 +200,8 @@ descriptor_set_destroy :: proc(
 
 // TODO(Mitchell): Consider making a Pipeline_Layout_Attributes struct to make things configurable
 pipeline_layout_create :: proc(
-	shader: Shader,
+	shader:                     Shader,
+	pipeline_layout_attributes: Pipeline_Layout_Attributes,
 	allocator := context.allocator
 ) -> (
 	pipeline_layout: Pipeline_Layout
@@ -188,8 +224,8 @@ pipeline_layout_create :: proc(
 	// NOTE(Mitchell): I'm assuming this will need to be configurable for VR
 	pipeline_layout.viewport_state_info = {
 		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		viewportCount = 1,
-		scissorCount  = 1,
+		viewportCount = pipeline_layout_attributes.viewport_count,
+		scissorCount  = pipeline_layout_attributes.scissor_count,
 	}
 
 	pipeline_layout.vertex_input_info = {
@@ -198,16 +234,17 @@ pipeline_layout_create :: proc(
 
 	pipeline_layout.input_assembly_info  = {
 		sType    = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		topology = .TRIANGLE_LIST
+		topology = vk.PrimitiveTopology(pipeline_layout_attributes.topology)
 	}
 
 	pipeline_layout.rasterization_state_info = {
 		sType       = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		polygonMode = .FILL,
+		polygonMode = vk.PolygonMode(pipeline_layout_attributes.polygon_mode),
 		lineWidth   = 1,
-		cullMode    = {.BACK},
-		frontFace   = .CLOCKWISE,
+		frontFace   = vk.FrontFace(pipeline_layout_attributes.front_face),
 	}
+
+	for order in pipeline_layout_attributes.cull_mode do pipeline_layout.rasterization_state_info.cullMode += {vk.CullModeFlag(order)}
 
 	// NOTE(Mitchell): May be worth looking into this more
 	pipeline_layout.multisample_state_info  = {

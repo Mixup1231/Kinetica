@@ -120,7 +120,7 @@ vulkan_init :: proc(
 	swapchain_attributes := swapchain_attributes
 	instance             := &vk_context.instance
 
-	log.info("Vulkan - Initialising:")
+	log.info("Vulkan: Initialising")
 	
 	// load process addresses
 	context.user_ptr = &instance.handle
@@ -129,7 +129,7 @@ vulkan_init :: proc(
 	}
 	vk.load_proc_addresses(get_proc_address)
 
-	log.info("Vulkan - Functions: Successfully loaded instance functions")
+	log.info("Vulkan: Successfully loaded instance functions")
 
 	// instance
 	instance.app_info = {
@@ -197,7 +197,7 @@ vulkan_init :: proc(
 	}
 	ensure(vk_context.device.physical != nil)
 
-	log.info("Vulkan - Physical Device: Successfully found physical device")
+	log.info("Vulkan: Successfully found physical device")
 
 	// logical device	
 	unique_queue_indices := make(map[u32]u32)
@@ -243,7 +243,7 @@ vulkan_init :: proc(
 			vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])
 			stored_index^ -= 1
 
-			log.info("Vulkan - Queue: Successfully retrieved queue")
+			log.info("Vulkan: Successfully retrieved queue")
 		}
 	}
 
@@ -548,7 +548,7 @@ vulkan_create_swapchain :: proc(
 
 	vk_fatal(vk.CreateSwapchainKHR(vk_context.device.logical, &swapchain_create_info, nil, &vk_context.swapchain.handle))
 
-	log.info("Vulkan: Successfully create the swapchain")
+	log.info("Vulkan: Successfully created the swapchain")
 
 	swapchain := &vk_context.swapchain
 	if swapchain.images == nil {
@@ -581,7 +581,7 @@ vulkan_create_swapchain :: proc(
 
 		vk_fatal(vk.CreateImageView(vk_context.device.logical, &image_view_create_info, nil, &swapchain.image_views[i]))
 
-		log.info("Vulkan: Successfully create swapchain image-view", i+1)
+		log.info("Vulkan: Successfully created swapchain image-view", i+1)
 	}
 
 	vk_context.swapchain.initialised = true
