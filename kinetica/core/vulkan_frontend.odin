@@ -13,6 +13,8 @@ Dynamic_State          :: vk.DynamicState
 Color_Blend_Attachment :: vk.PipelineColorBlendAttachmentState
 Pipeline_Layout_Handle :: vk.PipelineLayout
 Pipeline_Handle        :: vk.Pipeline
+Command_Pool           :: vk.CommandPool
+Command_Buffer         :: vk.CommandBuffer
 
 // struct aliases
 Dynamic_State_Info       :: vk.PipelineDynamicStateCreateInfo
@@ -24,6 +26,13 @@ Multisample_State_Info   :: vk.PipelineMultisampleStateCreateInfo
 Color_Blend_State_Info   :: vk.PipelineColorBlendStateCreateInfo
 
 // enums
+Queue_Type :: enum {
+	Graphics,
+	Compute,
+	Transfer,
+	Present,
+}
+
 Shader_Stage_Types :: distinct bit_set[Shader_Stage_Type]
 Shader_Stage_Type :: enum(vk.Flags) {
 	Vertex   = vk.Flags(vk.ShaderStageFlag.VERTEX),
@@ -62,6 +71,11 @@ Cull_Mode :: enum(i32) {
 Front_Face :: enum(i32) {
 	Clockwise         = i32(vk.FrontFace.CLOCKWISE),
 	Counter_Clockwise = i32(vk.FrontFace.COUNTER_CLOCKWISE),
+}
+
+Command_Buffer_Level :: enum(i32) {
+	Primary   = i32(vk.CommandBufferLevel.PRIMARY),
+	Secondary = i32(vk.CommandBufferLevel.SECONDARY),
 }
 
 // structs
@@ -353,4 +367,90 @@ pipeline_destroy :: proc(
 	pipeline_layout_destroy(pipeline.layout)
 	for shader_stage in pipeline.layout.shader.shader_stages do shader_stage_destroy(shader_stage)
 	for descriptor_set in pipeline.layout.shader.descriptor_sets do descriptor_set_destroy(descriptor_set)
+}
+
+// NOTE(Mitchell): Will always use RESET bit, may want to make configurable
+command_pool_create :: proc(
+	queue_type: Queue_Type
+) -> (
+	command_pool: Command_Pool
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	command_pool_create_info: vk.CommandPoolCreateInfo = {
+		sType = .COMMAND_POOL_CREATE_INFO,
+		flags = {.RESET_COMMAND_BUFFER},
+	}
+
+	switch (queue_type) {
+	case .Graphics: command_pool_create_info.queueFamilyIndex = vk_context.device.queue_indices[.Graphics]
+	case .Compute: command_pool_create_info.queueFamilyIndex  = vk_context.device.queue_indices[.Compute]
+	case .Transfer: command_pool_create_info.queueFamilyIndex = vk_context.device.queue_indices[.Transfer]
+	case .Present: command_pool_create_info.queueFamilyIndex  = vk_context.device.queue_indices[.Present]
+	}
+
+	vk.CreateCommandPool(vk_context.device.logical, &command_pool_create_info, nil, &command_pool)
+
+	return command_pool
+}
+
+command_pool_destroy :: proc(
+	command_pool: Command_Pool
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(command_pool != 0)
+
+	vk.DestroyCommandPool(vk_context.device.logical, command_pool, nil)
+}
+
+command_buffer_create :: proc {
+	command_buffer_create_single,
+	command_buffer_create_array,
+}
+
+command_buffer_create_single :: proc(
+	command_pool:         Command_Pool,
+	command_buffer_level: Command_Buffer_Level
+) -> (
+	command_buffer: Command_Buffer
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(command_pool != 0)
+	
+	command_buffer_allocate_info: vk.CommandBufferAllocateInfo = {
+		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
+		commandPool        = command_pool,
+		level              = vk.CommandBufferLevel(command_buffer_level),
+		commandBufferCount = 1
+	}
+
+	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &command_buffer_allocate_info, &command_buffer))
+
+	return command_buffer
+}
+
+command_buffer_create_array :: proc(
+	command_pool:         Command_Pool,
+	command_buffer_level: Command_Buffer_Level,
+	$Count:               u32
+) -> (
+	command_buffers: [Count]Command_Buffer
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(command_pool != 0)
+	
+	command_buffer_allocate_info: vk.CommandBufferAllocateInfo = {
+		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
+		commandPool        = command_pool,
+		level              = vk.CommandBufferLevel(command_buffer_level),
+		commandBufferCount = Count
+	}
+
+	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &command_buffer_allocate_info, &command_buffers[0]))
+
+	return command_buffers
 }

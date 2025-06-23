@@ -15,14 +15,6 @@ import vk "vendor:vulkan"
 // Testing
 
 @(private)
-VK_Queue_Type :: enum {
-	Graphics,
-	Compute,
-	Transfer,
-	Present,
-}
-
-@(private)
 VK_Instance :: struct {
 	handle:     vk.Instance,
 	extensions: []cstring,
@@ -48,8 +40,8 @@ VK_Device_Attributes :: struct {
 VK_Device :: struct {
 	logical:       vk.Device,
 	physical:      vk.PhysicalDevice,
-	queue_indices: [VK_Queue_Type]u32,
-	queues:        [VK_Queue_Type]vk.Queue,
+	queue_indices: [Queue_Type]u32,
+	queues:        [Queue_Type]vk.Queue,
 
 	initialised: bool,
 }
@@ -166,7 +158,7 @@ vulkan_init :: proc(
 	vk_context.instance.layers      = app_info.layers
 	vk_context.instance.initialised = true
 
-	log.info("Vulkan: Successfully created Vulkan Instance")
+	log.info("Vulkan: Successfully created Vulkan instance")
 	log.info("Vulkan - Layers:", app_info.layers)
 	log.info("Vulkan - Extensions:", extensions)
 
@@ -240,12 +232,12 @@ vulkan_init :: proc(
 	for index, queue in vk_context.device.queue_indices {
 		if index != max(u32) {
 			stored_index := &unique_queue_indices[index]
-			vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])
+			vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])			
 			stored_index^ -= 1
-
-			log.info("Vulkan: Successfully retrieved queue")
 		}
 	}
+
+	for queue, type in vk_context.device.queues do log.info("Vulkan - Queue: ", type, "retrieved with index", vk_context.device.queue_indices[type])
 
 	vk.load_proc_addresses_device(vk_context.device.logical)
 	vk_context.device.initialised = true
@@ -298,7 +290,7 @@ vulkan_rate_physical_device :: proc(
 ) -> (
 	valid:         bool,
 	rating:        u64,
-	queue_indices: [VK_Queue_Type]u32,
+	queue_indices: [Queue_Type]u32,
 ) {
 	context.allocator = allocator
 	ensure(device_attributes != nil)
