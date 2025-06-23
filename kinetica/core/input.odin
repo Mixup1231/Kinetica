@@ -19,6 +19,7 @@ Button_State :: enum {
 	Up,
 }
 
+@(private)
 Input :: struct {
 	key_states:      map[Keycode]Button_State,
 	mouse_states:    map[Mousecode]Button_State,

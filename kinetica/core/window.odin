@@ -8,6 +8,7 @@ import "core:mem"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
+@(private)
 Window :: struct {
 	handle:    glfw.WindowHandle,
 	width:     i32,

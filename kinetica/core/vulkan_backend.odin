@@ -14,6 +14,7 @@ import vk "vendor:vulkan"
 // Code formatting
 // Testing
 
+@(private)
 VK_Queue_Type :: enum {
 	Graphics,
 	Compute,
@@ -21,6 +22,7 @@ VK_Queue_Type :: enum {
 	Present,
 }
 
+@(private)
 VK_Instance :: struct {
 	handle:     vk.Instance,
 	extensions: []cstring,
@@ -30,16 +32,19 @@ VK_Instance :: struct {
 	initialised: bool,
 }
 
+@(private)
 VK_Surface :: struct {
 	handle: vk.SurfaceKHR
 }
 
+@(private)
 VK_Device_Attributes :: struct {
 	extensions:    []cstring,
 	features:      rawptr,
 	present_modes: []vk.PresentModeKHR,
 }
 
+@(private)
 VK_Device :: struct {
 	logical:       vk.Device,
 	physical:      vk.PhysicalDevice,
@@ -49,6 +54,7 @@ VK_Device :: struct {
 	initialised: bool,
 }
 
+@(private)
 VK_Swapchain_Attributes :: struct {
 	format:       vk.SurfaceFormatKHR,
 	present_mode: vk.PresentModeKHR,
@@ -56,6 +62,7 @@ VK_Swapchain_Attributes :: struct {
 	image_usage:  vk.ImageUsageFlags,
 }
 
+@(private)
 VK_Swapchain_Support_Details :: struct {
 	capabilities:  vk.SurfaceCapabilitiesKHR,
 	formats:       []vk.SurfaceFormatKHR,
@@ -64,6 +71,7 @@ VK_Swapchain_Support_Details :: struct {
 	initialised: bool,
 }
 
+@(private)
 VK_Swapchain :: struct {
 	handle:          vk.SwapchainKHR,
 	images:          []vk.Image,
@@ -74,6 +82,7 @@ VK_Swapchain :: struct {
 	initialised: bool,
 }
 
+@(private)
 VK_Application_Info :: struct {
 	api_version: u32,
 	app_name:    cstring,
@@ -83,6 +92,7 @@ VK_Application_Info :: struct {
 	features:    ^vk.ValidationFeaturesEXT,
 }
 
+@(private)
 VK_Context :: struct {
 	instance:  VK_Instance,
 	surface:   VK_Surface,
@@ -121,9 +131,7 @@ vulkan_init :: proc(
 
 	log.info("Vulkan - Functions: Successfully loaded instance functions")
 
-	/*---------------------*/
-	/* INITIALISE INSTANCE */	 
-	/*---------------------*/
+	// instance
 	instance.app_info = {
 		sType              = .APPLICATION_INFO,
 		pEngineName        = "Kinetica",
@@ -161,17 +169,13 @@ vulkan_init :: proc(
 	log.info("Vulkan: Successfully created Vulkan Instance")
 	log.info("Vulkan - Layers:", app_info.layers)
 	log.info("Vulkan - Extensions:", extensions)
-	
-	/*--------------------*/
-	/* INITIALISE SURFACE */
-	/*--------------------*/
+
+	// surface	
 	vk_fatal(glfw.CreateWindowSurface(vk_context.instance.handle, window.handle, nil, &vk_context.surface.handle))
 
 	log.info("Vulkan: Successfully created Vulkan Surface")
 
-	/*----------------------------*/
-	/* INITIALISE PHYSICAL DEVICE */
-	/*----------------------------*/
+	// physical device
 	physical_device_count: u32
 	physical_devices: []vk.PhysicalDevice
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, nil))
@@ -194,10 +198,8 @@ vulkan_init :: proc(
 	ensure(vk_context.device.physical != nil)
 
 	log.info("Vulkan - Physical Device: Successfully found physical device")
-	
-	/*---------------------------*/
-	/* INITIALISE LOGICAL DEVICE */
-	/*---------------------------*/
+
+	// logical device	
 	unique_queue_indices := make(map[u32]u32)
 	defer delete(unique_queue_indices)
 
@@ -250,9 +252,7 @@ vulkan_init :: proc(
 	
 	log.info("Vulkan: Successfully created logical device")
 
-	/*----------------------*/
-	/* INITIALISE SWAPCHAIN */
-	/*----------------------*/
+	// swapchain
 	vulkan_create_swapchain(&swapchain_attributes)
 	vk_context.initialised = true
 }
@@ -303,9 +303,7 @@ vulkan_rate_physical_device :: proc(
 	context.allocator = allocator
 	ensure(device_attributes != nil)
 
-	/*--------------*/
-	/* REQUIREMENTS */	
-	/*--------------*/
+	// requirements
 	// extensions
 	device_extension_count: u32
 	device_extensions: []vk.ExtensionProperties
@@ -401,9 +399,7 @@ vulkan_rate_physical_device :: proc(
 	queue_indices[.Compute]  = queues_found[.COMPUTE][0]
 	queue_indices[.Transfer] = queues_found[.TRANSFER][0]	
 
-	/*--------*/
-	/* RATING */	
-	/*--------*/
+	// rating
 	device_properties: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(physical_device, &device_properties)	
 	
@@ -591,6 +587,7 @@ vulkan_create_swapchain :: proc(
 	vk_context.swapchain.initialised = true
 }
 
+// NOTE(Mitchell): Could move out into vulkan_frontend.odin
 @(private)
 vulkan_create_shader_module :: proc(
 	device:   vk.Device,
