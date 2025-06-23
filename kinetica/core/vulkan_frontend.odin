@@ -103,7 +103,7 @@ Shader :: struct {
 	descriptor_sets: []Descriptor_Set,
 }
 
-Pipeline_Layout_Attributes :: struct {
+Pipeline_Attributes :: struct {
 	viewport_count: u32,
 	scissor_count:  u32,
 	polygon_mode:   Polygon_Mode,
@@ -212,10 +212,11 @@ descriptor_set_destroy :: proc(
 	vk.DestroyDescriptorSetLayout(vk_context.device.logical, descriptor_set, nil)
 }
 
-// TODO(Mitchell): Consider making a Pipeline_Layout_Attributes struct to make things configurable
+// TODO(Mitchell): Consider making a Pipeline_Attributes struct to make things configurable
+@(private)
 pipeline_layout_create :: proc(
+	pipeline_attributes: Pipeline_Attributes,
 	shader:                     Shader,
-	pipeline_layout_attributes: Pipeline_Layout_Attributes,
 	allocator := context.allocator
 ) -> (
 	pipeline_layout: Pipeline_Layout
@@ -238,8 +239,8 @@ pipeline_layout_create :: proc(
 	// NOTE(Mitchell): I'm assuming this will need to be configurable for VR
 	pipeline_layout.viewport_state_info = {
 		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		viewportCount = pipeline_layout_attributes.viewport_count,
-		scissorCount  = pipeline_layout_attributes.scissor_count,
+		viewportCount = pipeline_attributes.viewport_count,
+		scissorCount  = pipeline_attributes.scissor_count,
 	}
 
 	pipeline_layout.vertex_input_info = {
@@ -248,17 +249,17 @@ pipeline_layout_create :: proc(
 
 	pipeline_layout.input_assembly_info  = {
 		sType    = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		topology = vk.PrimitiveTopology(pipeline_layout_attributes.topology)
+		topology = vk.PrimitiveTopology(pipeline_attributes.topology)
 	}
 
 	pipeline_layout.rasterization_state_info = {
 		sType       = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		polygonMode = vk.PolygonMode(pipeline_layout_attributes.polygon_mode),
+		polygonMode = vk.PolygonMode(pipeline_attributes.polygon_mode),
 		lineWidth   = 1,
-		frontFace   = vk.FrontFace(pipeline_layout_attributes.front_face),
+		frontFace   = vk.FrontFace(pipeline_attributes.front_face),
 	}
 
-	for order in pipeline_layout_attributes.cull_mode do pipeline_layout.rasterization_state_info.cullMode += {vk.CullModeFlag(order)}
+	for order in pipeline_attributes.cull_mode do pipeline_layout.rasterization_state_info.cullMode += {vk.CullModeFlag(order)}
 
 	// NOTE(Mitchell): May be worth looking into this more
 	pipeline_layout.multisample_state_info  = {
@@ -303,7 +304,8 @@ pipeline_layout_destroy :: proc(
 }
 
 pipeline_create :: proc(
-	pipeline_layout: Pipeline_Layout,
+	pipeline_attributes: Pipeline_Attributes,
+	shader:                     Shader,
 	allocator := context.allocator
 ) -> (
 	pipeline: Pipeline
@@ -312,15 +314,13 @@ pipeline_create :: proc(
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
-	ensure(pipeline_layout.handle != 0)
 
-	pipeline_layout := pipeline_layout
-	pipeline.layout = pipeline_layout
+	pipeline.layout = pipeline_layout_create(pipeline_attributes, shader)
 
-	shader_stage_infos := make([]vk.PipelineShaderStageCreateInfo, len(pipeline_layout.shader.shader_stages))
+	shader_stage_infos := make([]vk.PipelineShaderStageCreateInfo, len(pipeline.layout.shader.shader_stages))
 	defer delete(shader_stage_infos)
 	
-	for shader_stage, i in pipeline_layout.shader.shader_stages {
+	for shader_stage, i in pipeline.layout.shader.shader_stages {
 		shader_stage_infos[i] = {
 			sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
 			module = shader_stage.module,
@@ -340,16 +340,16 @@ pipeline_create :: proc(
 	pipeline_create_info: vk.GraphicsPipelineCreateInfo = {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
 		pNext               = &rendering_create_info,
-		layout              = pipeline_layout.handle,
-		stageCount          = u32(len(pipeline_layout.shader.shader_stages)),
+		layout              = pipeline.layout.handle,
+		stageCount          = u32(len(pipeline.layout.shader.shader_stages)),
 		pStages             = raw_data(shader_stage_infos),
-		pVertexInputState   = &pipeline_layout.vertex_input_info,
-		pInputAssemblyState = &pipeline_layout.input_assembly_info,
-		pViewportState      = &pipeline_layout.viewport_state_info,
-		pRasterizationState = &pipeline_layout.rasterization_state_info,
-		pMultisampleState   = &pipeline_layout.multisample_state_info,
-		pColorBlendState    = &pipeline_layout.color_blend_state_info,
-		pDynamicState       = &pipeline_layout.dynamic_state_info,
+		pVertexInputState   = &pipeline.layout.vertex_input_info,
+		pInputAssemblyState = &pipeline.layout.input_assembly_info,
+		pViewportState      = &pipeline.layout.viewport_state_info,
+		pRasterizationState = &pipeline.layout.rasterization_state_info,
+		pMultisampleState   = &pipeline.layout.multisample_state_info,
+		pColorBlendState    = &pipeline.layout.color_blend_state_info,
+		pDynamicState       = &pipeline.layout.dynamic_state_info,
 	}
 
 	vk_warn(vk.CreateGraphicsPipelines(vk_context.device.logical, 0, 1, &pipeline_create_info, nil, &pipeline.handle))
