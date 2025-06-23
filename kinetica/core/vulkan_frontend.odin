@@ -9,6 +9,8 @@ import vk "vendor:vulkan"
 Shader_Module          :: vk.ShaderModule
 Descriptor_Set         :: vk.DescriptorSetLayout
 Descriptor_Pool        :: vk.DescriptorPool
+Dynamic_State          :: vk.DynamicState
+Color_Blend_Attachment :: vk.PipelineColorBlendAttachmentState
 Pipeline_Layout_Handle :: vk.PipelineLayout
 Pipeline_Handle        :: vk.Pipeline
 
@@ -64,12 +66,14 @@ Shader :: struct {
 Pipeline_Layout :: struct {
 	handle:                   Pipeline_Layout_Handle,
 	shader:                   Shader,
+	dynamic_state:            []Dynamic_State,
 	dynamic_state_info:       Dynamic_State_Info,
 	vertex_input_info:        Vertex_Input_Info,
 	input_assembly_info:      Input_Assembly_Info, 
 	viewport_state_info:      Viewport_State_Info,
 	rasterization_state_info: Rasterization_State_Info,
 	multisample_state_info:   Multisample_State_Info,
+	color_blend_attachment:   Color_Blend_Attachment,
 	color_blend_state_info:   Color_Blend_State_Info,
 }
 
@@ -161,19 +165,31 @@ descriptor_set_destroy :: proc(
 
 // TODO(Mitchell): Consider making a Pipeline_Layout_Attributes struct to make things configurable
 pipeline_layout_create :: proc(
-	shader: Shader
+	shader: Shader,
+	allocator := context.allocator
 ) -> (
 	pipeline_layout: Pipeline_Layout
 ) {
+	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
 
-	dynamic_states: []vk.DynamicState = {.VIEWPORT, .SCISSOR}
-	pipeline_layout.dynamic_state_info  = {
+	pipeline_layout.dynamic_state = make([]Dynamic_State, 2)
+	pipeline_layout.dynamic_state[0] = .VIEWPORT
+	pipeline_layout.dynamic_state[1] = .SCISSOR
+
+	pipeline_layout.dynamic_state_info = {
 		sType             = .PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		dynamicStateCount = u32(len(dynamic_states)),
-		pDynamicStates    = raw_data(dynamic_states)
+		dynamicStateCount = u32(len(pipeline_layout.dynamic_state)),
+		pDynamicStates    = raw_data(pipeline_layout.dynamic_state),
+	}
+	
+	// NOTE(Mitchell): I'm assuming this will need to be configurable for VR
+	pipeline_layout.viewport_state_info = {
+		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		viewportCount = 1,
+		scissorCount  = 1,
 	}
 
 	pipeline_layout.vertex_input_info = {
@@ -183,13 +199,6 @@ pipeline_layout_create :: proc(
 	pipeline_layout.input_assembly_info  = {
 		sType    = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 		topology = .TRIANGLE_LIST
-	}
-
-	// NOTE(Mitchell): I'm assuming this will need to be configurable for VR
-	pipeline_layout.viewport_state_info = {
-		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		viewportCount = 1,
-		scissorCount  = 1,
 	}
 
 	pipeline_layout.rasterization_state_info = {
@@ -207,7 +216,7 @@ pipeline_layout_create :: proc(
 		minSampleShading     = 1
 	}
 
-	color_blend_attachment: vk.PipelineColorBlendAttachmentState = {
+	pipeline_layout.color_blend_attachment = {
 		colorWriteMask = {.R, .G, .B, .A},
 		blendEnable    = false
 	}
@@ -215,7 +224,7 @@ pipeline_layout_create :: proc(
 	pipeline_layout.color_blend_state_info  = {
 		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
 		attachmentCount = 1,
-		pAttachments    = &color_blend_attachment
+		pAttachments    = &pipeline_layout.color_blend_attachment
 	}
 
 	// TODO(Mitchell): Implement push constant support
@@ -239,6 +248,7 @@ pipeline_layout_destroy :: proc(
 	ensure(vk_context.device.initialised)
 
 	vk.DestroyPipelineLayout(vk_context.device.logical, pipeline_layout.handle, nil)
+	delete(pipeline_layout.dynamic_state)
 }
 
 pipeline_create :: proc(
@@ -250,6 +260,7 @@ pipeline_create :: proc(
 	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
+	ensure(vk_context.swapchain.initialised)
 	ensure(pipeline_layout.handle != 0)
 
 	pipeline_layout := pipeline_layout
@@ -261,15 +272,24 @@ pipeline_create :: proc(
 	for shader_stage, i in pipeline_layout.shader.shader_stages {
 		shader_stage_infos[i] = {
 			sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
-			module = shader_stage.module,			 
+			module = shader_stage.module,
+			pName  = shader_stage.entry_point
 		}
 
 		for stage in shader_stage.stage do shader_stage_infos[i].stage += {vk.ShaderStageFlag(stage)}
 	}
 
+	rendering_create_info: vk.PipelineRenderingCreateInfo = {
+		sType = .PIPELINE_RENDERING_CREATE_INFO,
+		colorAttachmentCount = 1,
+		pColorAttachmentFormats = &vk_context.swapchain.attributes.format.format,	
+	}
+
 	// TODO(Mitchell): Will want to provide functionality to derive pipelines
 	pipeline_create_info: vk.GraphicsPipelineCreateInfo = {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
+		pNext               = &rendering_create_info,
+		layout              = pipeline_layout.handle,
 		stageCount          = u32(len(pipeline_layout.shader.shader_stages)),
 		pStages             = raw_data(shader_stage_infos),
 		pVertexInputState   = &pipeline_layout.vertex_input_info,
