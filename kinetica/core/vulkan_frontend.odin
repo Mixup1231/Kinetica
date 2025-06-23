@@ -16,15 +16,6 @@ Pipeline_Handle        :: vk.Pipeline
 Command_Pool           :: vk.CommandPool
 Command_Buffer         :: vk.CommandBuffer
 
-// struct aliases
-Dynamic_State_Info       :: vk.PipelineDynamicStateCreateInfo
-Vertex_Input_Info        :: vk.PipelineVertexInputStateCreateInfo
-Input_Assembly_Info      :: vk.PipelineInputAssemblyStateCreateInfo
-Viewport_State_Info      :: vk.PipelineViewportStateCreateInfo
-Rasterization_State_Info :: vk.PipelineRasterizationStateCreateInfo
-Multisample_State_Info   :: vk.PipelineMultisampleStateCreateInfo
-Color_Blend_State_Info   :: vk.PipelineColorBlendStateCreateInfo
-
 // enums
 Queue_Type :: enum {
 	Graphics,
@@ -112,18 +103,19 @@ Pipeline_Attributes :: struct {
 	topology:       Primitive_Topology
 }
 
+@(private)
 Pipeline_Layout :: struct {
 	handle:                   Pipeline_Layout_Handle,
 	shader:                   Shader,
 	dynamic_state:            []Dynamic_State,
-	dynamic_state_info:       Dynamic_State_Info,
-	vertex_input_info:        Vertex_Input_Info,
-	input_assembly_info:      Input_Assembly_Info, 
-	viewport_state_info:      Viewport_State_Info,
-	rasterization_state_info: Rasterization_State_Info,
-	multisample_state_info:   Multisample_State_Info,
-	color_blend_attachment:   Color_Blend_Attachment,
-	color_blend_state_info:   Color_Blend_State_Info,
+	dynamic_state_info:       vk.PipelineDynamicStateCreateInfo,
+	vertex_input_info:        vk.PipelineVertexInputStateCreateInfo,
+	input_assembly_info:      vk.PipelineInputAssemblyStateCreateInfo, 
+	viewport_state_info:      vk.PipelineViewportStateCreateInfo,
+	rasterization_state_info: vk.PipelineRasterizationStateCreateInfo,
+	multisample_state_info:   vk.PipelineMultisampleStateCreateInfo,
+	color_blend_attachment:   vk.PipelineColorBlendAttachmentState,
+	color_blend_state_info:   vk.PipelineColorBlendStateCreateInfo,
 }
 
 Pipeline :: struct {
@@ -216,7 +208,7 @@ descriptor_set_destroy :: proc(
 @(private)
 pipeline_layout_create :: proc(
 	pipeline_attributes: Pipeline_Attributes,
-	shader:                     Shader,
+	shader:              Shader,
 	allocator := context.allocator
 ) -> (
 	pipeline_layout: Pipeline_Layout
