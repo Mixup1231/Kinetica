@@ -103,7 +103,7 @@ vulkan_init :: proc(
 	device_attributes:    VK_Device_Attributes,
 	swapchain_attributes: VK_Swapchain_Attributes,
 	allocator := context.allocator
-) {
+) {	
 	context.allocator = allocator
 	ensure(window.initialised)
 	ensure(!vk_context.initialised)
@@ -246,6 +246,7 @@ vulkan_init :: proc(
 
 	// swapchain
 	vulkan_create_swapchain(&swapchain_attributes)
+	
 	vk_context.initialised = true
 }
 

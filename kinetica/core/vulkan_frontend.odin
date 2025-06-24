@@ -15,6 +15,8 @@ Pipeline_Layout_Handle :: vk.PipelineLayout
 Pipeline_Handle        :: vk.Pipeline
 Command_Pool           :: vk.CommandPool
 Command_Buffer         :: vk.CommandBuffer
+Semaphore              :: vk.Semaphore
+Fence                  :: vk.Fence
 
 // enums
 Queue_Type :: enum {
@@ -24,7 +26,7 @@ Queue_Type :: enum {
 	Present,
 }
 
-Shader_Stage_Types :: distinct bit_set[Shader_Stage_Type]
+Shader_Stage_Types :: distinct bit_set[Shader_Stage_Type; vk.Flags]
 Shader_Stage_Type :: enum(vk.Flags) {
 	Vertex   = vk.Flags(vk.ShaderStageFlag.VERTEX),
 	Fragment = vk.Flags(vk.ShaderStageFlag.FRAGMENT),
@@ -53,10 +55,10 @@ Polygon_Mode :: enum(i32) {
 	Point = i32(vk.PolygonMode.POINT),
 }
 
-Cull_Modes :: distinct bit_set[Cull_Mode]
-Cull_Mode :: enum(i32) {
-	Back  = i32(vk.CullModeFlag.BACK),
-	Front = i32(vk.CullModeFlag.FRONT),
+Cull_Modes :: distinct bit_set[Cull_Mode; vk.Flags]
+Cull_Mode :: enum(vk.Flags) {
+	Back  = vk.Flags(vk.CullModeFlag.BACK),
+	Front = vk.Flags(vk.CullModeFlag.FRONT),
 }
 
 Front_Face :: enum(i32) {
@@ -67,6 +69,18 @@ Front_Face :: enum(i32) {
 Command_Buffer_Level :: enum(i32) {
 	Primary   = i32(vk.CommandBufferLevel.PRIMARY),
 	Secondary = i32(vk.CommandBufferLevel.SECONDARY),
+}
+
+Command_Buffer_Usages :: distinct bit_set[Command_Buffer_Usage; vk.Flags]
+Command_Buffer_Usage :: enum(vk.Flags) {
+	One_Time_Submit      = vk.Flags(vk.CommandBufferUsageFlags.ONE_TIME_SUBMIT),
+	Render_Pass_Continue = vk.Flags(vk.CommandBufferUsageFlags.RENDER_PASS_CONTINUE),
+	Simultaneous_Use     = vk.Flags(vk.CommandBufferUsageFlags.SIMULTANEOUS_USE),
+}
+
+Pipeline_Bind_Point :: enum(i32) {
+	Graphics = i32(vk.PipelineBindPoint.GRAPHICS),
+	Gompute  = i32(vk.PipelineBindPoint.COMPUTE),
 }
 
 // structs
@@ -96,7 +110,6 @@ Shader :: struct {
 
 Pipeline_Attributes :: struct {
 	viewport_count: u32,
-	scissor_count:  u32,
 	polygon_mode:   Polygon_Mode,
 	cull_mode:      Cull_Modes,
 	front_face:     Front_Face,
@@ -121,6 +134,13 @@ Pipeline_Layout :: struct {
 Pipeline :: struct {
 	handle: Pipeline_Handle,
 	layout: Pipeline_Layout
+}
+
+Viewport :: struct {
+	x:        f32,
+	y:        f32,
+	width:    f32,
+	height:   f32,
 }
 
 shader_stage_create :: proc(
@@ -204,7 +224,6 @@ descriptor_set_destroy :: proc(
 	vk.DestroyDescriptorSetLayout(vk_context.device.logical, descriptor_set, nil)
 }
 
-// TODO(Mitchell): Consider making a Pipeline_Attributes struct to make things configurable
 @(private)
 pipeline_layout_create :: proc(
 	pipeline_attributes: Pipeline_Attributes,
@@ -228,11 +247,10 @@ pipeline_layout_create :: proc(
 		pDynamicStates    = raw_data(pipeline_layout.dynamic_state),
 	}
 	
-	// NOTE(Mitchell): I'm assuming this will need to be configurable for VR
 	pipeline_layout.viewport_state_info = {
 		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
 		viewportCount = pipeline_attributes.viewport_count,
-		scissorCount  = pipeline_attributes.scissor_count,
+		scissorCount  = pipeline_attributes.viewport_count,
 	}
 
 	pipeline_layout.vertex_input_info = {
@@ -251,7 +269,7 @@ pipeline_layout_create :: proc(
 		frontFace   = vk.FrontFace(pipeline_attributes.front_face),
 	}
 
-	for order in pipeline_attributes.cull_mode do pipeline_layout.rasterization_state_info.cullMode += {vk.CullModeFlag(order)}
+	for order in pipeline_attributes.cull_mode do pipeline_layout.rasterization_state_info.cullMode += { vk.CullModeFlag(order) }
 
 	// NOTE(Mitchell): May be worth looking into this more
 	pipeline_layout.multisample_state_info  = {
@@ -297,7 +315,7 @@ pipeline_layout_destroy :: proc(
 
 pipeline_create :: proc(
 	pipeline_attributes: Pipeline_Attributes,
-	shader:                     Shader,
+	shader:              Shader,
 	allocator := context.allocator
 ) -> (
 	pipeline: Pipeline
@@ -325,7 +343,7 @@ pipeline_create :: proc(
 	rendering_create_info: vk.PipelineRenderingCreateInfo = {
 		sType = .PIPELINE_RENDERING_CREATE_INFO,
 		colorAttachmentCount = 1,
-		pColorAttachmentFormats = &vk_context.swapchain.attributes.format.format,	
+		pColorAttachmentFormats = &vk_context.swapchain.attributes.format.format,
 	}
 
 	// TODO(Mitchell): Will want to provide functionality to derive pipelines
@@ -359,6 +377,14 @@ pipeline_destroy :: proc(
 	pipeline_layout_destroy(pipeline.layout)
 	for shader_stage in pipeline.layout.shader.shader_stages do shader_stage_destroy(shader_stage)
 	for descriptor_set in pipeline.layout.shader.descriptor_sets do descriptor_set_destroy(descriptor_set)
+}
+
+pipeline_bind :: proc(
+	command_buffer: Command_Buffer,
+	pipeline:       Pipeline,
+	bind_point:     Pipeline_Bind_Point
+) {
+	vk.CmdBindPipeline(command_buffer, vk.PipelineBindPoint(bind_point), pipeline.handle)
 }
 
 // NOTE(Mitchell): Will always use RESET bit, may want to make configurable
@@ -445,4 +471,68 @@ command_buffer_create_array :: proc(
 	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &command_buffer_allocate_info, &command_buffers[0]))
 
 	return command_buffers
+}
+
+command_buffer_reset :: proc(
+	command_buffer: Command_Buffer
+) {
+	vk.ResetCommandBuffer(command_buffer, {.RELEASE_RESOURCES})
+}
+
+command_buffer_begin :: proc(
+	command_buffer: Command_Buffer,
+	usages:         Command_Buffer_Usages
+) {
+	command_buffer_begin_info: vk.CommandBufferBeginInfo = { sType = .COMMAND_BUFFER_BEGIN_INFO }
+	for usage in usages do command_buffer_begin_info.flags += { vk.CommandBufferUsageFlag(usage) }
+
+	vk_warn(vk.BeginCommandBuffer(command_buffer, &command_buffer_begin_info))
+}
+
+semaphore_create :: proc() -> (
+	semaphore: Semaphore
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	semaphore_create_info: vk.SemaphoreCreateInfo = { sType = .SEMAPHORE_CREATE_INFO }
+	vk_warn(vk.CreateSemaphore(vk_context.device.logical, &semaphore_create_info, nil, &semaphore))
+	
+	return semaphore
+}
+
+semaphore_destroy :: proc(
+	semaphore: Semaphore
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(semaphore != 0)
+
+	vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
+}
+
+fence_create :: proc() -> (
+	fence: Fence
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	fence_create_info: vk.FenceCreateInfo = {
+		 sType = .FENCE_CREATE_INFO,
+		 flags = {.SIGNALED}
+	}
+	
+	vk_warn(vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fence))
+	
+	return fence
+}
+
+fence_destroy :: proc(
+	fence: Fence
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(fence != 0)
+
+	vk.DestroyFence(vk_context.device.logical, fence, nil)
 }
