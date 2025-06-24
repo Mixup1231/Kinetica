@@ -489,6 +489,34 @@ command_buffer_begin :: proc(
 	vk_warn(vk.BeginCommandBuffer(command_buffer, &command_buffer_begin_info))
 }
 
+command_buffer_end :: proc(
+	command_buffer: Command_Buffer,
+) {
+	vk.EndCommandBuffer(command_buffer)	
+}
+
+queue_submit :: proc(
+	command_buffer: Command_Buffer,
+	queue:          Queue_Type,
+	fence:          Fence = 0
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	command_buffer := command_buffer
+	fence          := fence
+	
+	submit_info: vk.SubmitInfo = {
+		sType              = .SUBMIT_INFO,
+		commandBufferCount = 1,
+		pCommandBuffers    = &command_buffer
+	}
+
+	vk_warn(vk.QueueSubmit(vk_context.device.queues[queue], 1, &submit_info, fence))
+	vk_warn(vk.WaitForFences(vk_context.device.logical, 1, &fence, true, max(u64)))
+	vk_warn(vk.ResetFences(vk_context.device.logical, 1, &fence))
+}
+
 semaphore_create :: proc() -> (
 	semaphore: Semaphore
 ) {
@@ -508,10 +536,13 @@ semaphore_destroy :: proc(
 	ensure(vk_context.device.initialised)
 	ensure(semaphore != 0)
 
+	vk.DeviceWaitIdle(vk_context.device.logical)
 	vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
 }
 
-fence_create :: proc() -> (
+fence_create :: proc(
+	signaled: bool = true
+) -> (
 	fence: Fence
 ) {
 	ensure(vk_context.initialised)
@@ -519,8 +550,8 @@ fence_create :: proc() -> (
 
 	fence_create_info: vk.FenceCreateInfo = {
 		 sType = .FENCE_CREATE_INFO,
-		 flags = {.SIGNALED}
 	}
+	fence_create_info.flags = {.SIGNALED} if signaled else {}
 	
 	vk_warn(vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fence))
 	
@@ -534,5 +565,6 @@ fence_destroy :: proc(
 	ensure(vk_context.device.initialised)
 	ensure(fence != 0)
 
+	vk.DeviceWaitIdle(vk_context.device.logical)
 	vk.DestroyFence(vk_context.device.logical, fence, nil)
 }

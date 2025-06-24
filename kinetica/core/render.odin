@@ -32,16 +32,16 @@ render_get_next_target :: proc(
 		transmute(^u32)&render_target
 	)
 
-	#partial switch (result) {
-	case .ERROR_OUT_OF_DATE_KHR:
-		// TODO(Mitchell): Recreate the swapchain
-		return render_target
-	case .SUCCESS, .SUBOPTIMAL_KHR:
-		return render_target
-	case:
-		log.fatalf("Vulkan - Swapchain %v: Failed to acquire the next swapchain image", result)
+	if result == .ERROR_OUT_OF_DATE_KHR {
+		log.info("Vulkan - Swapchain: Need to recreate swapchain.")
+	}
+	
+	if result != .SUCCESS && result != .SUBOPTIMAL_KHR {
+		log.fatal("Vulkan - Swapchain: Failed to acquire next swapchain image, exiting...")
 		os.exit(-1)
 	}
+
+	return render_target
 }
 
 // NOTE(Mitchell): Still early and not abstracted well
@@ -189,7 +189,6 @@ render_end :: proc(
 	}
 
 	vk.QueuePresentKHR(vk_context.device.queues[.Present], &present_info)
-	vk.QueueWaitIdle(vk_context.device.queues[.Present])
 }
 
 // TODO(Mitchell): Will need to accepts multiple viewports for VR
