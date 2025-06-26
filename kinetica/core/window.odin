@@ -79,7 +79,7 @@ window_create :: proc(
 		},
 		format = {
 			format     = .R8G8B8A8_SRGB,
-			colorSpace = .SRGB_NONLINEAR, 
+			colorSpace = .SRGB_NONLINEAR,
 		},
 		image_usage = {
 			.COLOR_ATTACHMENT,

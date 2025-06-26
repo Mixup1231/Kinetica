@@ -115,13 +115,9 @@ vulkan_init :: proc(
 	log.info("Vulkan: Initialising")
 	
 	// load process addresses
-	context.user_ptr = &instance.handle
-	get_proc_address :: proc(p: rawptr, name: cstring) {
-		(cast(^rawptr)p)^ = glfw.GetInstanceProcAddress((^vk.Instance)(context.user_ptr)^, name)
-	}
-	vk.load_proc_addresses(get_proc_address)
+	vk.load_proc_addresses(rawptr(glfw.GetInstanceProcAddress))
 
-	log.info("Vulkan: Successfully loaded instance functions")
+	log.info("Vulkan: Successfully loaded instance proc address")
 
 	// instance
 	instance.app_info = {
@@ -158,6 +154,8 @@ vulkan_init :: proc(
 	vk_context.instance.layers      = app_info.layers
 	vk_context.instance.initialised = true
 
+	vk.load_proc_addresses_instance(vk_context.instance.handle)
+
 	log.info("Vulkan: Successfully created Vulkan instance")
 	log.info("Vulkan - Layers:", app_info.layers)
 	log.info("Vulkan - Extensions:", extensions)
@@ -178,7 +176,7 @@ vulkan_init :: proc(
 	
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, raw_data(physical_devices)))		
 
-	best_rating: u64	
+	best_rating: u64
 	for physical_device in physical_devices {
 		valid, rating, queue_indices := vulkan_rate_physical_device(physical_device, &device_attributes)
 		if valid && rating > best_rating {
@@ -191,7 +189,7 @@ vulkan_init :: proc(
 
 	log.info("Vulkan: Successfully found physical device")
 
-	// logical device	
+	// logical device
 	unique_queue_indices := make(map[u32]u32)
 	defer delete(unique_queue_indices)
 
@@ -232,7 +230,7 @@ vulkan_init :: proc(
 	for index, queue in vk_context.device.queue_indices {
 		if index != max(u32) {
 			stored_index := &unique_queue_indices[index]
-			vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])			
+			vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])
 			stored_index^ -= 1
 		}
 	}
@@ -342,12 +340,13 @@ vulkan_rate_physical_device :: proc(
 	}	
 	
 	// queues
-	queues_found := make(map[vk.QueueFlag][2]u32)
+	queues_found := make(map[vk.QueueFlag]u32)
 	defer delete(queues_found)
 	
-	required_queues : vk.QueueFlags : {.GRAPHICS, .COMPUTE, .TRANSFER}
-	present_index: [2]u32 = {max(u32), max(u32)}
-	queue_index_count: u32
+	queue_index_count := make(map[u32]u32)
+	defer delete(queue_index_count)
+	
+	present_index: u32 = max(u32)	
 	
 	queue_family_count: u32
 	queue_families: []vk.QueueFamilyProperties
@@ -358,39 +357,89 @@ vulkan_rate_physical_device :: proc(
 	defer delete(queue_families)
 
 	vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, raw_data(queue_families))
-	for family, i in queue_families {
-		queue_index_count = 0
-		
-		for queue in required_queues {
-			if queue in family.queueFlags && queue in queues_found {
-				stored_family := &queues_found[queue]
-				if queue_index_count < stored_family[1] {
-					stored_family[0] = u32(i)
-					stored_family[1] = queue_index_count
-					queue_index_count += 1
-				}
-			} 	
-			if queue in family.queueFlags && queue not_in queues_found {
-				queues_found[queue] = {u32(i), queue_index_count}
-				queue_index_count += 1
-			}
 
+	// desired queue layout
+	for family, i in queue_families {
+		flags := family.queueFlags
+
+		can_present: b32
+		vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
+
+		// exclusive present and graphics queue
+		if can_present && .GRAPHICS in flags && .GRAPHICS not_in queues_found && family.queueCount >= 2{
+			queues_found[.GRAPHICS]   = u32(i)
+			present_index             = u32(i)
+			queue_index_count[u32(i)] = 2
+			continue
+		}
+
+		// dedicated compute queue
+		if .COMPUTE in flags && .GRAPHICS not_in flags && .COMPUTE not_in queues_found {
+			queues_found[.COMPUTE]    = u32(i)
+			queue_index_count[u32(i)] = 1
+			continue
+		}
+
+		// dedicated transfer queue
+		if .TRANSFER in flags && !(vk.QueueFlags({.GRAPHICS, .COMPUTE}) <= flags) && .TRANSFER not_in queues_found {
+			queues_found[.TRANSFER]   = u32(i)
+			queue_index_count[u32(i)] = 1
+			continue
+		}
+	}
+
+	// fallback queue layout
+	if .GRAPHICS not_in queues_found {
+		for family, i in queue_families {
+			if .GRAPHICS in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
+				queues_found[.GRAPHICS] = u32(i)
+				(&queue_index_count[u32(i)])^ += 1
+				break
+			}
+		}
+	}
+
+	if present_index == max(u32) {
+		for family, i in queue_families {
 			can_present: b32
 			vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
-			if can_present && queue_index_count < present_index[1] {
-				present_index[0] = u32(i)
-				present_index[1] = queue_index_count
-				queue_index_count += 1
+
+			if can_present && queue_index_count[u32(i)]+1 <= family.queueCount {
+				present_index = u32(i)
+				(&queue_index_count[u32(i)])^ += 1
+				break
 			}
-		}		
+		}
+	}
+
+	if .COMPUTE not_in queues_found {
+		for family, i in queue_families {
+			if .COMPUTE in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
+				queues_found[.COMPUTE] = u32(i)
+				(&queue_index_count[u32(i)])^ += 1
+				break
+			}
+		}
+	}
+
+	if .TRANSFER not_in queues_found {
+		for family, i in queue_families {
+			if .TRANSFER in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
+				queues_found[.TRANSFER] = u32(i)
+				(&queue_index_count[u32(i)])^ += 1
+				break
+			}
+		}
 	}
 
 	// failed to find required queues
-	if .GRAPHICS not_in queues_found || .COMPUTE not_in queues_found || .TRANSFER not_in queues_found do return false, 0, {}
+	if .GRAPHICS not_in queues_found || .COMPUTE not_in queues_found || .TRANSFER not_in queues_found || present_index == max(u32) {
+		return false, 0, {}
+	}
 
-	queue_indices[.Graphics] = queues_found[.GRAPHICS][0]
-	queue_indices[.Compute]  = queues_found[.COMPUTE][0]
-	queue_indices[.Transfer] = queues_found[.TRANSFER][0]	
+	queue_indices[.Graphics] = queues_found[.GRAPHICS]
+	queue_indices[.Compute]  = queues_found[.COMPUTE]
+	queue_indices[.Transfer] = queues_found[.TRANSFER]
 
 	// rating
 	device_properties: vk.PhysicalDeviceProperties
@@ -594,7 +643,7 @@ vulkan_create_shader_module :: proc(
 
 	shader_code, read_file := os.read_entire_file(string(filepath))
 	if !read_file {
-		log.warn("Failed to read shader file: %s", filepath)
+		log.warn("Vulkan - Shader: Failed to read shader file: %s", filepath)
 		
 		return shader_module
 	}

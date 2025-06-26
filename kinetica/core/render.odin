@@ -63,8 +63,6 @@ render_begin :: proc(
 		dstAccessMask       = {.COLOR_ATTACHMENT_WRITE},
 		oldLayout           = .UNDEFINED,
 		newLayout           = .COLOR_ATTACHMENT_OPTIMAL,
-		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		image               = vk_context.swapchain.images[render_target],
 		subresourceRange    = {
 			aspectMask     = {.COLOR},
@@ -89,7 +87,7 @@ render_begin :: proc(
 	clear_value.color.float32 = clear_color
 	
 	// TODO(Mitchell): Make loadOp and storeOp configurable
-	color_attachment_info: vk.RenderingAttachmentInfoKHR = {
+	color_attachment_info: vk.RenderingAttachmentInfo = {
 		sType       = .RENDERING_ATTACHMENT_INFO,
 		imageView   = vk_context.swapchain.image_views[render_target],
 		imageLayout = .COLOR_ATTACHMENT_OPTIMAL,
@@ -110,7 +108,7 @@ render_begin :: proc(
 		},
 	}	
 	
-	vk.CmdBeginRendering(command_buffer, &rendering_info)
+	vk.CmdBeginRenderingKHR(command_buffer, &rendering_info)
 }
 
 render_end :: proc(
@@ -128,15 +126,13 @@ render_end :: proc(
 	command_buffer := command_buffer
 	in_flight      := in_flight
 	
-	vk.CmdEndRendering(command_buffer)
+	vk.CmdEndRenderingKHR(command_buffer)
 
 	barrier: vk.ImageMemoryBarrier = {
 		sType               = .IMAGE_MEMORY_BARRIER,
 		srcAccessMask       = {.COLOR_ATTACHMENT_WRITE},
 		oldLayout           = .COLOR_ATTACHMENT_OPTIMAL,
 		newLayout           = .PRESENT_SRC_KHR,
-		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		image               = vk_context.swapchain.images[render_target],
 		subresourceRange    = {
 			aspectMask     = {.COLOR},
@@ -177,6 +173,7 @@ render_end :: proc(
 	vk_warn(vk.QueueSubmit(vk_context.device.queues[.Graphics], 1, &submit_info, in_flight))
 	vk.WaitForFences(vk_context.device.logical, 1, &in_flight, true, max(u64))
 
+	present_result: vk.Result
 	swapchain: []vk.SwapchainKHR = {vk_context.swapchain.handle}
 	
 	present_info: vk.PresentInfoKHR = {
@@ -185,13 +182,15 @@ render_end :: proc(
 		pWaitSemaphores    = raw_data(render_finished),
 		swapchainCount     = 1,
 		pSwapchains        = raw_data(swapchain),
-		pImageIndices      = &render_target
+		pImageIndices      = &render_target,
+		pResults           = &present_result
 	}
 
 	vk.QueuePresentKHR(vk_context.device.queues[.Present], &present_info)
+	vk_warn(present_result)
 }
 
-// TODO(Mitchell): Will need to accepts multiple viewports for VR
+// TODO(Mitchell): Will need to accept multiple viewports for VR
 render_set_viewport :: proc(
 	command_buffer: Command_Buffer,
 	viewport:       Viewport

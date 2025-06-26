@@ -259,7 +259,7 @@ pipeline_layout_create :: proc(
 
 	pipeline_layout.input_assembly_info  = {
 		sType    = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		topology = vk.PrimitiveTopology(pipeline_attributes.topology)
+		topology = vk.PrimitiveTopology(pipeline_attributes.topology),
 	}
 
 	pipeline_layout.rasterization_state_info = {
@@ -275,18 +275,16 @@ pipeline_layout_create :: proc(
 	pipeline_layout.multisample_state_info  = {
 		sType                = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
 		rasterizationSamples = {._1},
-		minSampleShading     = 1
 	}
 
 	pipeline_layout.color_blend_attachment = {
 		colorWriteMask = {.R, .G, .B, .A},
-		blendEnable    = false
 	}
 
 	pipeline_layout.color_blend_state_info  = {
 		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
 		attachmentCount = 1,
-		pAttachments    = &pipeline_layout.color_blend_attachment
+		pAttachments    = &pipeline_layout.color_blend_attachment,
 	}
 
 	// TODO(Mitchell): Implement push constant support
