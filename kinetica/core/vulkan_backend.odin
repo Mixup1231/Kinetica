@@ -52,6 +52,7 @@ VK_Swapchain_Attributes :: struct {
 	present_mode: vk.PresentModeKHR,
 	extent:       vk.Extent2D,
 	image_usage:  vk.ImageUsageFlags,
+	image_count:  u32
 }
 
 @(private)
@@ -535,9 +536,10 @@ vulkan_create_swapchain :: proc(
 	}
 
 	image_count := support_details.capabilities.minImageCount+1
-	if support_details.capabilities.maxImageCount > 0 && image_count > support_details.capabilities.minImageCount {
+	if support_details.capabilities.maxImageCount > 0 && image_count > support_details.capabilities.maxImageCount {
 		image_count = support_details.capabilities.maxImageCount
 	}
+	attributes.image_count = image_count
 
 	swapchain_create_info.imageArrayLayers = 1
 	swapchain_create_info.minImageCount    = image_count
