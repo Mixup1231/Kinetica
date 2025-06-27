@@ -9,6 +9,12 @@ Key :: struct {
 	action:   Key_Action,
 }
 
+Mapping_Context :: struct {
+	toggles: map[Key]Toggle,
+	binds:   map[Key]proc(),
+}
+
+@(private)
 Key_Code :: enum i32 {
 	A             = glfw.KEY_A,
 	B             = glfw.KEY_B,
@@ -91,28 +97,33 @@ Key_Code :: enum i32 {
 	F12           = glfw.KEY_F12,
 }
 
+@(private)
 Modifier :: enum i32 {
 	Shift,
 	Ctrl,
 	Alt,
 }
+@(private)
 Key_Modifiers :: bit_set[Modifier;i32]
 
+@(private)
 Key_Action :: enum i32 {
 	Release = glfw.RELEASE,
 	Press   = glfw.PRESS,
 	Repeat  = glfw.REPEAT,
 }
 
+@(private)
 Toggle :: struct {
 	first:  proc(),
 	second: proc(),
 }
 
+@(private)
 Input_Context :: struct {
-	odin_ctx:      runtime.Context,
-	input_toggles: map[Key]Toggle,
-	input_binds:   map[Key]proc(),
-	initialised:   bool,
+	odin_ctx:    runtime.Context,
+	global_map:  Mapping_Context,
+	current_map: Mapping_Context,
+	initialised: bool,
 }
 

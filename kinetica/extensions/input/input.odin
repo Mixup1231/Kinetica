@@ -4,14 +4,15 @@ import "core:log"
 import "core:math/bits"
 import "vendor:glfw"
 
+@(private)
 input_ctx: Input_Context
 
 init :: proc(window: glfw.WindowHandle) {
 	assert(window != nil)
 	assert(!input_ctx.initialised)
 	input_ctx.odin_ctx = context
-	input_ctx.input_binds = make(map[Key]proc())
-	input_ctx.input_toggles = make(map[Key]Toggle)
+	input_ctx.global_map.binds = make(map[Key]proc())
+	input_ctx.global_map.toggles = make(map[Key]Toggle)
 	glfw.SetKeyCallback(window, key_callback)
 	input_ctx.initialised = true
 }
@@ -30,13 +31,13 @@ key_callback :: proc "c" (
 		modifier = transmute(Key_Modifiers)mods,
 		action   = transmute(Key_Action)action,
 	}
-	if key in input_ctx.input_binds {
-		input_ctx.input_binds[key]()
-		if key in input_ctx.input_toggles {
-			if (input_ctx.input_binds[key] == input_ctx.input_toggles[key].first) {
-				bind_key(key, input_ctx.input_toggles[key].second)
+	if key in input_ctx.global_map.binds {
+		input_ctx.global_map.binds[key]()
+		if key in input_ctx.global_map.toggles {
+			if (input_ctx.global_map.binds[key] == input_ctx.global_map.toggles[key].first) {
+				bind_key(key, input_ctx.global_map.toggles[key].second)
 			} else {
-				bind_key(key, input_ctx.input_toggles[key].first)
+				bind_key(key, input_ctx.global_map.toggles[key].first)
 			}
 		}
 	}
@@ -44,13 +45,13 @@ key_callback :: proc "c" (
 
 destroy :: proc() {
 	assert(input_ctx.initialised)
-	delete(input_ctx.input_toggles)
-	delete(input_ctx.input_binds)
+	delete(input_ctx.global_map.toggles)
+	delete(input_ctx.global_map.binds)
 	input_ctx.initialised = false
 }
 
 bind_key :: proc(key: Key, func: proc()) {
-	input_ctx.input_binds[key] = func
+	input_ctx.global_map.binds[key] = func
 }
 
 bind_toggle :: proc(key: Key, first: proc(), second: proc()) {
@@ -58,7 +59,7 @@ bind_toggle :: proc(key: Key, first: proc(), second: proc()) {
 		first  = first,
 		second = second,
 	}
-	input_ctx.input_toggles[key] = toggle
+	input_ctx.global_map.toggles[key] = toggle
 	bind_key(key, first)
 }
 
