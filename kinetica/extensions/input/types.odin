@@ -123,7 +123,7 @@ Toggle :: struct {
 Input_Context :: struct {
 	odin_ctx:    runtime.Context,
 	global_map:  Mapping_Context,
-	current_map: Mapping_Context,
+	current_map: ^Mapping_Context,
 	initialised: bool,
 }
 
