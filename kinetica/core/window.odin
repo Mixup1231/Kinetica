@@ -9,7 +9,7 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 @(private)
-Window :: struct {
+Glfw_Context :: struct {
 	handle:    glfw.WindowHandle,
 	width:     i32,
 	height:    i32,
@@ -19,7 +19,7 @@ Window :: struct {
 }
 
 @(private)
-window: Window
+glfw_context: Glfw_Context
 
 window_create :: proc(
 	width:       i32,
@@ -30,24 +30,24 @@ window_create :: proc(
 	allocator := context.allocator,
 ) {
 	context.allocator = allocator
-	ensure(!window.initialised)
+	ensure(!glfw_context.initialised)
 	ensure(bool(glfw.Init()))
 	
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
 	glfw.WindowHint(glfw.RESIZABLE, true)
 
-	window = {
+	glfw_context = {
 		handle      = glfw.CreateWindow(width, height, title, nil, nil),
 		width       = width,
 		height      = height,
 		title       = title,
 		initialised = true
 	}	
-	ensure(window.handle != nil)
+	ensure(glfw_context.handle != nil)
 
 	input_init()
 	
-	app_info: VK_Application_Info = {
+	app_info: Application_Info = {
 		api_version = vk.API_VERSION_1_3,
 		app_name    = app_name,
 		app_version = app_version,
@@ -61,17 +61,17 @@ window_create :: proc(
 		dynamicRendering = true,
 	}
 
-	device_attribtes: VK_Device_Attributes = {
+	device_attribtes: Device_Attributes = {
 		features      = &dynamic_rendering_feature,
 		present_modes = { .FIFO },
 		extensions    = {
 			vk.KHR_SWAPCHAIN_EXTENSION_NAME,
-			vk.KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-			vk.KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME
+			// vk.KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+			// vk.KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME
 		}
 	}
 
-	swapchain_attributes: VK_Swapchain_Attributes = {
+	swapchain_attributes: Swapchain_Attributes = {
 		present_mode = .FIFO,
 		extent = {
 			width  = u32(width),
@@ -91,63 +91,62 @@ window_create :: proc(
 }
 
 window_destroy :: proc() {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 
 	input_destroy()
 	vulkan_destroy()
-	glfw.DestroyWindow(window.handle)
+	glfw.DestroyWindow(glfw_context.handle)
 	glfw.Terminate()
 }
 
 window_poll :: proc() {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 
 	glfw.PollEvents()
 	input_poll()
 }
 
 window_should_close :: proc() -> bool {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 	
-	return bool(glfw.WindowShouldClose(window.handle))
+	return bool(glfw.WindowShouldClose(glfw_context.handle))
 }
 
 window_set_should_close :: proc(
 	value: bool
 ) {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 
-	glfw.SetWindowShouldClose(window.handle, b32(value))
+	glfw.SetWindowShouldClose(glfw_context.handle, b32(value))
 }
 
 window_get_size :: proc() -> (
  	width:  i32,
  	height: i32
 ) {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 	
-	return glfw.GetWindowSize(window.handle)
+	return glfw.GetWindowSize(glfw_context.handle)
 }
 
 window_set_size :: proc(
 	width:  i32,
 	height: i32
 ) {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 
-	glfw.SetWindowSize(window.handle, width, height)
-	window.width  = width
-	window.height = height
+	glfw.SetWindowSize(glfw_context.handle, width, height)
+	glfw_context.width  = width
+	glfw_context.height = height
 }
 
-@(private)
 window_get_framebuffer_size :: proc() -> (
 	width:  i32,
 	height: i32,
 ) {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 
-	return glfw.GetFramebufferSize(window.handle)
+	return glfw.GetFramebufferSize(glfw_context.handle)
 }
 
 @(private="file")
@@ -156,8 +155,8 @@ window_on_resize :: proc "c" (
 	height: i32
 ) {
 	context = runtime.default_context()
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 	
-	window.width  = width
-	window.height = height
+	glfw_context.width  = width
+	glfw_context.height = height
 }

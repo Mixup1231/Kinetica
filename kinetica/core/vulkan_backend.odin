@@ -10,12 +10,9 @@ import vk "vendor:vulkan"
 
 // TODO(Mitchell):
 // Implement Vulkan debug logging (callback)
-// Caching valid physical devices
-// Code formatting
-// Testing
+// Caching valid physical devices 
 
-@(private)
-VK_Instance :: struct {
+Instance :: struct {
 	handle:     vk.Instance,
 	extensions: []cstring,
 	layers:     []cstring,
@@ -24,20 +21,17 @@ VK_Instance :: struct {
 	initialised: bool,
 }
 
-@(private)
-VK_Surface :: struct {
+Surface :: struct {
 	handle: vk.SurfaceKHR
 }
 
-@(private)
-VK_Device_Attributes :: struct {
+Device_Attributes :: struct {
 	extensions:    []cstring,
 	features:      rawptr,
 	present_modes: []vk.PresentModeKHR,
 }
 
-@(private)
-VK_Device :: struct {
+Device :: struct {
 	logical:       vk.Device,
 	physical:      vk.PhysicalDevice,
 	queue_indices: [Queue_Type]u32,
@@ -46,8 +40,7 @@ VK_Device :: struct {
 	initialised: bool,
 }
 
-@(private)
-VK_Swapchain_Attributes :: struct {
+Swapchain_Attributes :: struct {
 	format:       vk.SurfaceFormatKHR,
 	present_mode: vk.PresentModeKHR,
 	extent:       vk.Extent2D,
@@ -55,8 +48,7 @@ VK_Swapchain_Attributes :: struct {
 	image_count:  u32
 }
 
-@(private)
-VK_Swapchain_Support_Details :: struct {
+Swapchain_Support_Details :: struct {
 	capabilities:  vk.SurfaceCapabilitiesKHR,
 	formats:       []vk.SurfaceFormatKHR,
 	present_modes: []vk.PresentModeKHR,
@@ -64,19 +56,17 @@ VK_Swapchain_Support_Details :: struct {
 	initialised: bool,
 }
 
-@(private)
-VK_Swapchain :: struct {
+Swapchain :: struct {
 	handle:          vk.SwapchainKHR,
 	images:          []vk.Image,
 	image_views:     []vk.ImageView,
-	attributes:      VK_Swapchain_Attributes,
-	support_details: VK_Swapchain_Support_Details,
+	attributes:      Swapchain_Attributes,
+	support_details: Swapchain_Support_Details,
 
 	initialised: bool,
 }
 
-@(private)
-VK_Application_Info :: struct {
+Application_Info :: struct {
 	api_version: u32,
 	app_name:    cstring,
 	app_version: u32,
@@ -85,28 +75,25 @@ VK_Application_Info :: struct {
 	features:    ^vk.ValidationFeaturesEXT,
 }
 
-@(private)
 VK_Context :: struct {
-	instance:  VK_Instance,
-	surface:   VK_Surface,
-	device:    VK_Device,
-	swapchain: VK_Swapchain,
+	instance:  Instance,
+	surface:   Surface,
+	device:    Device,
+	swapchain: Swapchain,
 
 	initialised: bool,
 }
 
-@(private)
 vk_context: VK_Context
 
-@(private)
 vulkan_init :: proc(
-	app_info:             VK_Application_Info,
-	device_attributes:    VK_Device_Attributes,
-	swapchain_attributes: VK_Swapchain_Attributes,
+	app_info:             Application_Info,
+	device_attributes:    Device_Attributes,
+	swapchain_attributes: Swapchain_Attributes,
 	allocator := context.allocator
 ) {	
 	context.allocator = allocator
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 	ensure(!vk_context.initialised)
 
 	device_attributes    := device_attributes
@@ -162,7 +149,7 @@ vulkan_init :: proc(
 	log.info("Vulkan - Extensions:", extensions)
 
 	// surface	
-	vk_fatal(glfw.CreateWindowSurface(vk_context.instance.handle, window.handle, nil, &vk_context.surface.handle))
+	vk_fatal(glfw.CreateWindowSurface(vk_context.instance.handle, glfw_context.handle, nil, &vk_context.surface.handle))
 
 	log.info("Vulkan: Successfully created Vulkan Surface")
 
@@ -249,7 +236,6 @@ vulkan_init :: proc(
 	vk_context.initialised = true
 }
 
-@(private)
 vulkan_destroy :: proc() {
 	ensure(vk_context.initialised)
 	ensure(vk_context.instance.initialised)
@@ -282,10 +268,9 @@ vulkan_destroy :: proc() {
 	vk.DestroyInstance(vk_context.instance.handle, nil)
 }
 
-@(private="file")
 vulkan_rate_physical_device :: proc(
 	physical_device:   vk.PhysicalDevice,
-	device_attributes: ^VK_Device_Attributes,
+	device_attributes: ^Device_Attributes,
 	allocator := context.allocator
 ) -> (
 	valid:         bool,
@@ -466,11 +451,10 @@ vulkan_rate_physical_device :: proc(
 }
 
 // NOTE(Mitchell): Uses vk_context.device.physical and vk_context.surface.handle to retrieve information
-@(private="file")
 vulkan_query_swapchain_support :: proc(
 	allocator := context.allocator
 ) -> (
-	support_details: VK_Swapchain_Support_Details
+	support_details: Swapchain_Support_Details
 ) {
 	context.allocator = allocator
 	ensure(!vk_context.swapchain.support_details.initialised)
@@ -497,9 +481,8 @@ vulkan_query_swapchain_support :: proc(
 }
 
 // NOTE(Mitchell): This is a separate function because you need to recreate the swapchain on resize
-@(private="file")
 vulkan_create_swapchain :: proc(
-	swapchain_attributes: ^VK_Swapchain_Attributes,
+	swapchain_attributes: ^Swapchain_Attributes,
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
@@ -604,7 +587,7 @@ vulkan_create_swapchain :: proc(
 	if swapchain.image_views == nil {
 		swapchain.image_views = make([]vk.ImageView, image_count)
 	} else {
-		ensure(u32(len(swapchain.images)) == image_count)
+		ensure(u32(len(swapchain.image_views)) == image_count)
 	}
 
 	vk_fatal(vk.GetSwapchainImagesKHR(vk_context.device.logical, swapchain.handle, &image_count, raw_data(swapchain.images)))
@@ -631,38 +614,7 @@ vulkan_create_swapchain :: proc(
 	vk_context.swapchain.initialised = true
 }
 
-// NOTE(Mitchell): Could move out into vulkan_frontend.odin
-@(private)
-vulkan_create_shader_module :: proc(
-	device:   vk.Device,
-	filepath: cstring,
-	allocator := context.allocator
-) -> (
-	shader_module: vk.ShaderModule
-){
-	context.allocator = allocator
-	ensure(vk_context.initialised)
 
-	shader_code, read_file := os.read_entire_file(string(filepath))
-	if !read_file {
-		log.warn("Vulkan - Shader: Failed to read shader file: %s", filepath)
-		
-		return shader_module
-	}
-	defer delete(shader_code)
-
-	shader_module_create_info: vk.ShaderModuleCreateInfo = {
-		sType    = .SHADER_MODULE_CREATE_INFO,
-		codeSize = len(shader_code),
-		pCode    = transmute(^u32)raw_data(shader_code),
-	}
-
-	vk_warn(vk.CreateShaderModule(vk_context.device.logical, &shader_module_create_info, nil, &shader_module))
-
-	return shader_module
-}
-
-@(private)
 vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
 		log.fatalf("%s Vulkan - Fatal %v: %s", location, result, msg)
@@ -670,7 +622,6 @@ vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location :=
 	}
 }
 
-@(private)
 vk_warn :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
 		log.warnf("%s Vulkan - Warn %v: %s", location, result, msg)

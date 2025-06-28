@@ -5,564 +5,715 @@ import "core:log"
 
 import vk "vendor:vulkan"
 
-// handles
-Shader_Module          :: vk.ShaderModule
-Descriptor_Set         :: vk.DescriptorSetLayout
-Descriptor_Pool        :: vk.DescriptorPool
-Dynamic_State          :: vk.DynamicState
-Color_Blend_Attachment :: vk.PipelineColorBlendAttachmentState
-Pipeline_Layout_Handle :: vk.PipelineLayout
-Pipeline_Handle        :: vk.Pipeline
-Command_Pool           :: vk.CommandPool
-Command_Buffer         :: vk.CommandBuffer
-Semaphore              :: vk.Semaphore
-Fence                  :: vk.Fence
+// TODO(Mitchell):
 
-// enums
 Queue_Type :: enum {
 	Graphics,
 	Compute,
 	Transfer,
-	Present,
+	Present
 }
 
-Shader_Stage_Types :: distinct bit_set[Shader_Stage_Type; vk.Flags]
-Shader_Stage_Type :: enum(vk.Flags) {
-	Vertex   = vk.Flags(vk.ShaderStageFlag.VERTEX),
-	Fragment = vk.Flags(vk.ShaderStageFlag.FRAGMENT),
-	Compute  = vk.Flags(vk.ShaderStageFlag.COMPUTE),
-	Geometry = vk.Flags(vk.ShaderStageFlag.GEOMETRY),
-}
-
-Descriptor_Type :: enum(i32) {
-	Sampler        = i32(vk.DescriptorType.SAMPLER),
-	Uniform_Buffer = i32(vk.DescriptorType.UNIFORM_BUFFER),
-	Storage_Buffer = i32(vk.DescriptorType.STORAGE_BUFFER),
-}
-
-Primitive_Topology :: enum(i32) {
-	Point_List     = i32(vk.PrimitiveTopology.POINT_LIST),
-	Line_List      = i32(vk.PrimitiveTopology.LINE_LIST),
-	Line_Strip     = i32(vk.PrimitiveTopology.LINE_STRIP),
-	Triangle_List  = i32(vk.PrimitiveTopology.TRIANGLE_LIST),
-	Triangle_Strip = i32(vk.PrimitiveTopology.TRIANGLE_STRIP),
-	Triangle_Fan   = i32(vk.PrimitiveTopology.TRIANGLE_FAN),
-}
-
-Polygon_Mode :: enum(i32) {
-	Fill  = i32(vk.PolygonMode.FILL),
-	Line  = i32(vk.PolygonMode.LINE),
-	Point = i32(vk.PolygonMode.POINT),
-}
-
-Cull_Modes :: distinct bit_set[Cull_Mode; vk.Flags]
-Cull_Mode :: enum(vk.Flags) {
-	Back  = vk.Flags(vk.CullModeFlag.BACK),
-	Front = vk.Flags(vk.CullModeFlag.FRONT),
-}
-
-Front_Face :: enum(i32) {
-	Clockwise         = i32(vk.FrontFace.CLOCKWISE),
-	Counter_Clockwise = i32(vk.FrontFace.COUNTER_CLOCKWISE),
-}
-
-Command_Buffer_Level :: enum(i32) {
-	Primary   = i32(vk.CommandBufferLevel.PRIMARY),
-	Secondary = i32(vk.CommandBufferLevel.SECONDARY),
-}
-
-Command_Buffer_Usages :: distinct bit_set[Command_Buffer_Usage; vk.Flags]
-Command_Buffer_Usage :: enum(vk.Flags) {
-	One_Time_Submit      = vk.Flags(vk.CommandBufferUsageFlags.ONE_TIME_SUBMIT),
-	Render_Pass_Continue = vk.Flags(vk.CommandBufferUsageFlags.RENDER_PASS_CONTINUE),
-	Simultaneous_Use     = vk.Flags(vk.CommandBufferUsageFlags.SIMULTANEOUS_USE),
-}
-
-Pipeline_Bind_Point :: enum(i32) {
-	Graphics = i32(vk.PipelineBindPoint.GRAPHICS),
-	Gompute  = i32(vk.PipelineBindPoint.COMPUTE),
-}
-
-// structs
-Vertex :: struct {
-	position: [3]f32,
-	normal:   [3]f32,
-	uv:       [2]f32,
-}
-
-Shader_Stage :: struct {
-	module:      Shader_Module,
-	stage:       Shader_Stage_Types,
-	entry_point: cstring,
-}
-
-Descriptor_Set_Binding :: struct {
-	binding: u32,
-	type:    Descriptor_Type,
-	count:   u32,
-	stages:  Shader_Stage_Types,
-}
-
-Shader :: struct {
-	shader_stages:   []Shader_Stage,
-	descriptor_sets: []Descriptor_Set,
-}
-
-Pipeline_Attributes :: struct {
-	viewport_count: u32,
-	polygon_mode:   Polygon_Mode,
-	cull_mode:      Cull_Modes,
-	front_face:     Front_Face,
-	topology:       Primitive_Topology
-}
-
-@(private)
-Pipeline_Layout :: struct {
-	handle:                   Pipeline_Layout_Handle,
-	shader:                   Shader,
-	dynamic_state:            []Dynamic_State,
-	dynamic_state_info:       vk.PipelineDynamicStateCreateInfo,
-	vertex_input_info:        vk.PipelineVertexInputStateCreateInfo,
-	input_assembly_info:      vk.PipelineInputAssemblyStateCreateInfo, 
-	viewport_state_info:      vk.PipelineViewportStateCreateInfo,
-	rasterization_state_info: vk.PipelineRasterizationStateCreateInfo,
-	multisample_state_info:   vk.PipelineMultisampleStateCreateInfo,
-	color_blend_attachment:   vk.PipelineColorBlendAttachmentState,
-	color_blend_state_info:   vk.PipelineColorBlendStateCreateInfo,
-}
-
-Pipeline :: struct {
-	handle: Pipeline_Handle,
-	layout: Pipeline_Layout
-}
-
-Viewport :: struct {
-	x:        f32,
-	y:        f32,
-	width:    f32,
-	height:   f32,
-}
-
-shader_stage_create :: proc(
-	filepath:    cstring,
-	entry_point: cstring,
-	stage:       Shader_Stage_Types,
+vulkan_shader_module_create :: proc(
+	filepath: cstring,
 	allocator := context.allocator
 ) -> (
-	shader_stage: Shader_Stage
-) {
+	shader_module: vk.ShaderModule
+){
 	context.allocator = allocator
 	ensure(vk_context.initialised)
 
-	shader_stage = {
-		module      = Shader_Module(vulkan_create_shader_module(vk_context.device.logical, filepath)),
-		stage       = stage,
-		entry_point = entry_point
+	shader_code, read_file := os.read_entire_file(string(filepath))
+	if !read_file {
+		log.warn("Vulkan - Shader: Failed to read shader file: %s", filepath)
+		
+		return shader_module
 	}
+	defer delete(shader_code)
 
+	shader_module_create_info: vk.ShaderModuleCreateInfo = {
+		sType    = .SHADER_MODULE_CREATE_INFO,
+		codeSize = len(shader_code),
+		pCode    = transmute(^u32)raw_data(shader_code),
+	}
+	vk_warn(vk.CreateShaderModule(vk_context.device.logical, &shader_module_create_info, nil, &shader_module))
+
+	return shader_module
+}
+
+vulkan_shader_module_destroy :: proc(
+	shader_module: vk.ShaderModule
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk.DestroyShaderModule(vk_context.device.logical, shader_module, nil)
+}
+
+vulkan_shader_stage_state_create :: proc(
+	stage:  vk.ShaderStageFlags = {},
+	module: vk.ShaderModule     = 0,
+	entry:  cstring             = "main"
+) -> (
+	shader_stage: vk.PipelineShaderStageCreateInfo
+) {
+	shader_stage = {
+		sType = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+		stage  = stage,
+		module = module,
+		pName  = entry
+	}
+	
 	return shader_stage
 }
 
-shader_stage_destroy :: proc(
-	shader_stage: Shader_Stage
-) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(shader_stage.module != 0)
-
-	vk.DestroyShaderModule(vk_context.device.logical, shader_stage.module, nil)
-}
-
-descriptor_set_create :: proc(
-	descriptor_bindings: []Descriptor_Set_Binding,
-	allocator := context.allocator
+vulkan_vertex_input_state_create :: proc(
+	binding_descriptions:   []vk.VertexInputBindingDescription   = {},
+	attribute_descriptions: []vk.VertexInputAttributeDescription = {}
 ) -> (
-	descriptor_set: Descriptor_Set
+	vertex_input_state: vk.PipelineVertexInputStateCreateInfo
 ) {
-	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-
-	binding_count := u32(len(descriptor_bindings))
-	ensure(binding_count > 0)
-
-	binding_layouts := make([]vk.DescriptorSetLayoutBinding, binding_count)
-	defer delete(binding_layouts)
-
-	for descriptor_binding, i in descriptor_bindings {
-		binding_layouts[i] = {
-			binding         = descriptor_binding.binding,
-			descriptorType  = vk.DescriptorType(descriptor_binding.type),
-			descriptorCount = descriptor_binding.count,
-		}
-
-		for stage in descriptor_binding.stages do binding_layouts[i].stageFlags += {vk.ShaderStageFlag(stage)}
-	}
-
-	descriptor_set_layout_create_info: vk.DescriptorSetLayoutCreateInfo = {
-		sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		bindingCount = binding_count,
-		pBindings    = raw_data(binding_layouts)
-	}
-
-	vk_warn(vk.CreateDescriptorSetLayout(
-		vk_context.device.logical,
-		&descriptor_set_layout_create_info,
-		nil,
-		&descriptor_set
-	))
-
-	return descriptor_set
-}
-
-descriptor_set_destroy :: proc(
-	descriptor_set: Descriptor_Set
-) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-
-	vk.DestroyDescriptorSetLayout(vk_context.device.logical, descriptor_set, nil)
-}
-
-@(private)
-pipeline_layout_create :: proc(
-	pipeline_attributes: Pipeline_Attributes,
-	shader:              Shader,
-	allocator := context.allocator
-) -> (
-	pipeline_layout: Pipeline_Layout
-) {
-	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_context.swapchain.initialised)
-
-	pipeline_layout.dynamic_state = make([]Dynamic_State, 2)
-	pipeline_layout.dynamic_state[0] = .VIEWPORT
-	pipeline_layout.dynamic_state[1] = .SCISSOR
-
-	pipeline_layout.dynamic_state_info = {
-		sType             = .PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		dynamicStateCount = u32(len(pipeline_layout.dynamic_state)),
-		pDynamicStates    = raw_data(pipeline_layout.dynamic_state),
-	}
-	
-	pipeline_layout.viewport_state_info = {
-		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		viewportCount = pipeline_attributes.viewport_count,
-		scissorCount  = pipeline_attributes.viewport_count,
-	}
-
-	pipeline_layout.vertex_input_info = {
+	vertex_input_state = {
 		sType = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+		vertexBindingDescriptionCount   = u32(len(binding_descriptions)),
+		pVertexBindingDescriptions      = raw_data(binding_descriptions),
+		vertexAttributeDescriptionCount = u32(len(attribute_descriptions)),
+		pVertexAttributeDescriptions    = raw_data(attribute_descriptions),
 	}
-
-	pipeline_layout.input_assembly_info  = {
-		sType    = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		topology = vk.PrimitiveTopology(pipeline_attributes.topology),
-	}
-
-	pipeline_layout.rasterization_state_info = {
-		sType       = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		polygonMode = vk.PolygonMode(pipeline_attributes.polygon_mode),
-		lineWidth   = 1,
-		frontFace   = vk.FrontFace(pipeline_attributes.front_face),
-	}
-
-	for order in pipeline_attributes.cull_mode do pipeline_layout.rasterization_state_info.cullMode += { vk.CullModeFlag(order) }
-
-	// NOTE(Mitchell): May be worth looking into this more
-	pipeline_layout.multisample_state_info  = {
-		sType                = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		rasterizationSamples = {._1},
-	}
-
-	pipeline_layout.color_blend_attachment = {
-		colorWriteMask = {.R, .G, .B, .A},
-	}
-
-	pipeline_layout.color_blend_state_info  = {
-		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		attachmentCount = 1,
-		pAttachments    = &pipeline_layout.color_blend_attachment,
-	}
-
-	// TODO(Mitchell): Implement push constant support
-	pipeline_layout_create_info: vk.PipelineLayoutCreateInfo = {
-		sType = .PIPELINE_LAYOUT_CREATE_INFO,
-		setLayoutCount = u32(len(shader.descriptor_sets)),
-		pSetLayouts = raw_data(shader.descriptor_sets)
-	}
-
-	pipeline_layout.shader = shader
-
-	vk_warn(vk.CreatePipelineLayout(vk_context.device.logical, &pipeline_layout_create_info, nil, &pipeline_layout.handle))
-
-	return pipeline_layout
+	
+	return vertex_input_state
 }
 
-pipeline_layout_destroy :: proc(
-	pipeline_layout: Pipeline_Layout
-) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-
-	vk.DestroyPipelineLayout(vk_context.device.logical, pipeline_layout.handle, nil)
-	delete(pipeline_layout.dynamic_state)
-}
-
-pipeline_create :: proc(
-	pipeline_attributes: Pipeline_Attributes,
-	shader:              Shader,
-	allocator := context.allocator
+vulkan_input_assembly_state_create :: proc(
+	topology: vk.PrimitiveTopology = .TRIANGLE_LIST,
+	restart:  b32                  = false
 ) -> (
-	pipeline: Pipeline
+	input_assembly_state: vk.PipelineInputAssemblyStateCreateInfo
 ) {
-	context.allocator = allocator
+	input_assembly_state = {
+		sType                  = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		topology               = topology,
+		primitiveRestartEnable = restart,
+	}
+
+	return input_assembly_state
+}
+
+vulkan_viewport_state_create :: proc(
+	viewport_count: u32 = 1,
+	scissor_count:  u32 = 1,
+) -> (
+	viewport_state: vk.PipelineViewportStateCreateInfo
+) {
+	viewport_state = {
+		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		viewportCount = viewport_count,
+		scissorCount  = scissor_count,
+	}
+
+	return viewport_state
+}
+
+vulkan_rasterizer_state_create :: proc(
+	depth_clamp_enable:         b32              = false,
+	rasterizer_discard_enable:  b32              = false,
+	polygon_mode:               vk.PolygonMode   = .FILL,
+	cull_mode:                  vk.CullModeFlags = {.BACK},
+	front_face:                 vk.FrontFace     = .CLOCKWISE,
+	depth_bias_enable:          b32              = false,
+	depth_bias_constant_factor: f32              = 0,
+	depth_bias_clamp:           f32              = 0,
+	depth_bias_slope_factor:    f32              = 0,
+	line_width:                 f32              = 1
+) -> (
+	rasterizer_state: vk.PipelineRasterizationStateCreateInfo
+) {
+	rasterizer_state = {
+		sType                   = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		depthClampEnable        = depth_clamp_enable,
+		rasterizerDiscardEnable = rasterizer_discard_enable,
+		polygonMode             = polygon_mode,
+		cullMode                = cull_mode,
+		frontFace               = front_face,
+		depthBiasEnable         = depth_bias_enable,
+		depthBiasConstantFactor = depth_bias_constant_factor,
+		depthBiasClamp          = depth_bias_clamp,
+		depthBiasSlopeFactor    = depth_bias_slope_factor,
+		lineWidth               = line_width,
+	}
+	
+	return rasterizer_state
+}
+
+vulkan_multisample_state_create :: proc(
+	rasterization_samples:    vk.SampleCountFlags = {._1},
+	sample_shading_enable:    b32                 = false,
+	min_sample_shading:       f32                 = 0,
+	sample_mask:              ^vk.SampleMask      = nil,
+	alpha_to_coverage_enable: b32                 = false,
+	alpha_to_one_enable:      b32                 = false
+) -> (
+	multisample_state: vk.PipelineMultisampleStateCreateInfo
+) {
+	multisample_state = {
+		sType                 = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+		rasterizationSamples  = rasterization_samples,
+		sampleShadingEnable   = sample_shading_enable,
+		minSampleShading      = min_sample_shading,
+		pSampleMask           = sample_mask,
+		alphaToCoverageEnable = alpha_to_coverage_enable,
+		alphaToOneEnable      = alpha_to_one_enable,
+	}
+	
+	return multisample_state
+}
+
+vulkan_color_attachment_state_create :: proc(
+	blend_enable:           b32                    = false,
+	src_color_blend_factor: vk.BlendFactor         = vk.BlendFactor.SRC_ALPHA,
+	dst_color_blend_factor: vk.BlendFactor         = vk.BlendFactor.ONE_MINUS_SRC_ALPHA,
+	color_blend_op:         vk.BlendOp             = vk.BlendOp.ADD,
+	src_alpha_blend_factor: vk.BlendFactor         = vk.BlendFactor.ONE,
+	dst_alpha_blend_factor: vk.BlendFactor         = vk.BlendFactor.ZERO,
+	alpha_blend_op:         vk.BlendOp             = vk.BlendOp.ADD,
+	color_write_mask:       vk.ColorComponentFlags = {.R, .G, .B, .A}
+) -> (
+	attachment_state: vk.PipelineColorBlendAttachmentState
+) {
+	attachment_state = {
+		blendEnable         = blend_enable,
+		srcColorBlendFactor = src_color_blend_factor,
+		dstColorBlendFactor = dst_color_blend_factor,
+		colorBlendOp        = color_blend_op,
+		srcAlphaBlendFactor = src_alpha_blend_factor,
+		dstAlphaBlendFactor = dst_alpha_blend_factor,
+		alphaBlendOp        = alpha_blend_op,
+		colorWriteMask      = color_write_mask,
+	}
+	
+	return attachment_state
+}
+
+vulkan_color_blend_state_create :: proc(
+	logic_op_enable: b32                                    = false,
+	logic_op:        vk.LogicOp                             = .COPY,
+	attachments:     []vk.PipelineColorBlendAttachmentState = {},
+	blend_constants: [4]f32                                 = {0, 0, 0, 0}
+) -> (
+	color_blend_state: vk.PipelineColorBlendStateCreateInfo
+) {
+	color_blend_state = {
+		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+		logicOpEnable   = logic_op_enable,
+		logicOp         = logic_op,
+		attachmentCount = u32(len(attachments)),
+		pAttachments    = raw_data(attachments),
+		blendConstants  = blend_constants,
+	}
+	
+	return color_blend_state
+}
+
+// NOTE(Mitchell): Needs to contain viewport and scissor
+vulkan_dynamic_state_create :: proc(
+	dynamic_states: []vk.DynamicState = {.VIEWPORT, .SCISSOR}
+) -> (
+	dynamic_state: vk.PipelineDynamicStateCreateInfo
+) {		
+	found_viewport: bool
+	for state in dynamic_states do if state == .VIEWPORT do found_viewport = true
+	ensure(found_viewport)
+	
+	found_scissor:  bool
+	for state in dynamic_states do if state == .SCISSOR do found_scissor = true
+	ensure(found_scissor)
+	
+	dynamic_state = {
+		sType             = .PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		dynamicStateCount = u32(len(dynamic_states)),
+		pDynamicStates    = raw_data(dynamic_states)
+	}
+	
+	return dynamic_state
+}
+
+vulkan_get_swapchain_color_format :: proc() -> (
+	format: vk.Format
+) {
 	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
 
-	pipeline.layout = pipeline_layout_create(pipeline_attributes, shader)
+	return vk_context.swapchain.attributes.format.format
+}
 
-	shader_stage_infos := make([]vk.PipelineShaderStageCreateInfo, len(pipeline.layout.shader.shader_stages))
-	defer delete(shader_stage_infos)
+vulkan_rendering_info_create :: proc(
+	view_mask:                 u32         = 0,
+	color_attachment_formats:  []vk.Format = {},
+	depth_attachment_format:   vk.Format   = vk.Format.UNDEFINED,
+	stencil_attachment_format: vk.Format   = vk.Format.UNDEFINED
+) -> (
+	rendering_info: vk.PipelineRenderingCreateInfo
+) {
+	rendering_info = {
+		sType                   = .PIPELINE_RENDERING_CREATE_INFO,
+		viewMask                = view_mask,
+		colorAttachmentCount    = u32(len(color_attachment_formats)),
+		pColorAttachmentFormats = raw_data(color_attachment_formats),
+		depthAttachmentFormat   = depth_attachment_format,
+		stencilAttachmentFormat = stencil_attachment_format,
+	}
 	
-	for shader_stage, i in pipeline.layout.shader.shader_stages {
-		shader_stage_infos[i] = {
-			sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
-			module = shader_stage.module,
-			pName  = shader_stage.entry_point
-		}
+	return rendering_info
+}
 
-		for stage in shader_stage.stage do shader_stage_infos[i].stage += {vk.ShaderStageFlag(stage)}
+vulkan_graphics_pipeline_create :: proc (
+	rendering_info:       ^vk.PipelineRenderingCreateInfo,
+	vertex_input_state:   ^vk.PipelineVertexInputStateCreateInfo   = nil,
+	input_assembly_state: ^vk.PipelineInputAssemblyStateCreateInfo = nil,
+	viewport_state:       ^vk.PipelineViewportStateCreateInfo      = nil,
+	rasterizer_state:     ^vk.PipelineRasterizationStateCreateInfo = nil,
+	multisample_state:    ^vk.PipelineMultisampleStateCreateInfo   = nil,
+	color_blend_state:    ^vk.PipelineColorBlendStateCreateInfo    = nil,
+	dynamic_state:        ^vk.PipelineDynamicStateCreateInfo       = nil,
+	shader_stages:        []vk.PipelineShaderStageCreateInfo       = {},
+	descriptor_layouts:   []vk.DescriptorSetLayout                 = {},
+	push_constant_ranges: []vk.PushConstantRange                   = {}
+) -> (
+	pipeline: vk.Pipeline,
+	pipeline_layout: vk.PipelineLayout
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(rendering_info != nil)
+	
+	pipeline_layout_create_info: vk.PipelineLayoutCreateInfo = {
+		sType                  = .PIPELINE_LAYOUT_CREATE_INFO,
+		setLayoutCount         = u32(len(descriptor_layouts)),
+		pSetLayouts            = raw_data(descriptor_layouts),
+		pushConstantRangeCount = u32(len(push_constant_ranges)),
+		pPushConstantRanges    = raw_data(push_constant_ranges),
 	}
+	vk_warn(vk.CreatePipelineLayout(vk_context.device.logical, &pipeline_layout_create_info, nil, &pipeline_layout))
 
-	rendering_create_info: vk.PipelineRenderingCreateInfo = {
-		sType = .PIPELINE_RENDERING_CREATE_INFO,
-		colorAttachmentCount = 1,
-		pColorAttachmentFormats = &vk_context.swapchain.attributes.format.format,
-	}
-
-	// TODO(Mitchell): Will want to provide functionality to derive pipelines
 	pipeline_create_info: vk.GraphicsPipelineCreateInfo = {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
-		pNext               = &rendering_create_info,
-		layout              = pipeline.layout.handle,
-		stageCount          = u32(len(pipeline.layout.shader.shader_stages)),
-		pStages             = raw_data(shader_stage_infos),
-		pVertexInputState   = &pipeline.layout.vertex_input_info,
-		pInputAssemblyState = &pipeline.layout.input_assembly_info,
-		pViewportState      = &pipeline.layout.viewport_state_info,
-		pRasterizationState = &pipeline.layout.rasterization_state_info,
-		pMultisampleState   = &pipeline.layout.multisample_state_info,
-		pColorBlendState    = &pipeline.layout.color_blend_state_info,
-		pDynamicState       = &pipeline.layout.dynamic_state_info,
+		pNext               = rendering_info,
+		layout              = pipeline_layout,
+		stageCount          = u32(len(shader_stages)),
+		pStages             = raw_data(shader_stages),
+		pVertexInputState   = vertex_input_state,
+		pInputAssemblyState = input_assembly_state,
+		pViewportState      = viewport_state,
+		pRasterizationState = rasterizer_state,
+		pMultisampleState   = multisample_state,
+		pColorBlendState    = color_blend_state,
+		pDynamicState       = dynamic_state,
 	}
+	vk_warn(vk.CreateGraphicsPipelines(vk_context.device.logical, 0, 1, &pipeline_create_info, nil, &pipeline))
 
-	vk_warn(vk.CreateGraphicsPipelines(vk_context.device.logical, 0, 1, &pipeline_create_info, nil, &pipeline.handle))
-
-	return pipeline
+	return pipeline, pipeline_layout
 }
 
-pipeline_destroy :: proc(
-	pipeline: Pipeline
+vulkan_graphics_pipeline_destroy :: proc(
+	pipeline:        vk.Pipeline,
+	pipeline_layout: vk.PipelineLayout
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
-
-	vk.DestroyPipeline(vk_context.device.logical, pipeline.handle, nil)
-	pipeline_layout_destroy(pipeline.layout)
-	for shader_stage in pipeline.layout.shader.shader_stages do shader_stage_destroy(shader_stage)
-	for descriptor_set in pipeline.layout.shader.descriptor_sets do descriptor_set_destroy(descriptor_set)
+	
+	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
+	vk.DestroyPipelineLayout(vk_context.device.logical, pipeline_layout, nil)
+	vk.DestroyPipeline(vk_context.device.logical, pipeline, nil)
 }
 
-pipeline_bind :: proc(
-	command_buffer: Command_Buffer,
-	pipeline:       Pipeline,
-	bind_point:     Pipeline_Bind_Point
-) {
-	vk.CmdBindPipeline(command_buffer, vk.PipelineBindPoint(bind_point), pipeline.handle)
-}
-
-// NOTE(Mitchell): Will always use RESET bit, may want to make configurable
-command_pool_create :: proc(
+vulkan_command_pool_create :: proc(
 	queue_type: Queue_Type
 ) -> (
-	command_pool: Command_Pool
+	command_pool: vk.CommandPool
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	command_pool_create_info: vk.CommandPoolCreateInfo = {
-		sType = .COMMAND_POOL_CREATE_INFO,
-		flags = {.RESET_COMMAND_BUFFER},
+		sType            = .COMMAND_POOL_CREATE_INFO,
+		flags            = {.RESET_COMMAND_BUFFER},
+		queueFamilyIndex = vk_context.device.queue_indices[queue_type]
 	}
-
-	switch (queue_type) {
-	case .Graphics: command_pool_create_info.queueFamilyIndex = vk_context.device.queue_indices[.Graphics]
-	case .Compute: command_pool_create_info.queueFamilyIndex  = vk_context.device.queue_indices[.Compute]
-	case .Transfer: command_pool_create_info.queueFamilyIndex = vk_context.device.queue_indices[.Transfer]
-	case .Present: command_pool_create_info.queueFamilyIndex  = vk_context.device.queue_indices[.Present]
-	}
-
-	vk.CreateCommandPool(vk_context.device.logical, &command_pool_create_info, nil, &command_pool)
+	
+	vk_warn(vk.CreateCommandPool(vk_context.device.logical, &command_pool_create_info, nil, &command_pool))
 
 	return command_pool
 }
 
-command_pool_destroy :: proc(
-	command_pool: Command_Pool
+vulkan_command_pool_destroy :: proc(
+	command_pool: vk.CommandPool
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
-	ensure(command_pool != 0)
 
 	vk.DestroyCommandPool(vk_context.device.logical, command_pool, nil)
 }
 
-command_buffer_create :: proc {
-	command_buffer_create_single,
-	command_buffer_create_array,
+vulkan_command_buffer_create :: proc {
+	vulkan_command_buffer_create_single,
+	vulkan_command_buffer_create_array,
 }
 
-command_buffer_create_single :: proc(
-	command_pool:         Command_Pool,
-	command_buffer_level: Command_Buffer_Level
+vulkan_command_buffer_create_single :: proc(
+	command_pool: vk.CommandPool,
+	level:        vk.CommandBufferLevel = .PRIMARY
 ) -> (
-	command_buffer: Command_Buffer
+	command_buffer: vk.CommandBuffer
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(command_pool != 0)
-	
-	command_buffer_allocate_info: vk.CommandBufferAllocateInfo = {
+
+	allocate_info: vk.CommandBufferAllocateInfo = {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		commandPool        = command_pool,
-		level              = vk.CommandBufferLevel(command_buffer_level),
-		commandBufferCount = 1
+		commandBufferCount = 1,
+		level              = vk.CommandBufferLevel(level)
 	}
-
-	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &command_buffer_allocate_info, &command_buffer))
+	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, &command_buffer))
 
 	return command_buffer
 }
 
-command_buffer_create_array :: proc(
-	command_pool:         Command_Pool,
-	command_buffer_level: Command_Buffer_Level,
-	$Count:               u32
+vulkan_command_buffer_create_array :: proc(
+	command_pool: vk.CommandPool,
+	level:        vk.CommandBufferLevel = .PRIMARY,
+	$Count:       u32
 ) -> (
-	command_buffers: [Count]Command_Buffer
+	command_buffers: [Count]vk.CommandBuffer
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(command_pool != 0)
-	
-	command_buffer_allocate_info: vk.CommandBufferAllocateInfo = {
+
+	allocate_info: vk.CommandBufferAllocateInfo = {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		commandPool        = command_pool,
-		level              = vk.CommandBufferLevel(command_buffer_level),
-		commandBufferCount = Count
+		commandBufferCount = Count,
+		level              = vk.CommandBufferLevel(level)
 	}
-
-	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &command_buffer_allocate_info, &command_buffers[0]))
+	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, raw_data(command_buffers[:])))
 
 	return command_buffers
 }
 
-command_buffer_reset :: proc(
-	command_buffer: Command_Buffer
+vulkan_command_buffer_reset :: proc(
+	command_buffer: vk.CommandBuffer
 ) {
-	vk.ResetCommandBuffer(command_buffer, {.RELEASE_RESOURCES})
+	vk_warn(vk.ResetCommandBuffer(command_buffer, {.RELEASE_RESOURCES}))
 }
 
-command_buffer_begin :: proc(
-	command_buffer: Command_Buffer,
-	usages:         Command_Buffer_Usages
+vulkan_command_buffer_begin :: proc(
+	command_buffer: vk.CommandBuffer,
+	flags:          vk.CommandBufferUsageFlags = {.ONE_TIME_SUBMIT}
 ) {
-	command_buffer_begin_info: vk.CommandBufferBeginInfo = { sType = .COMMAND_BUFFER_BEGIN_INFO }
-	for usage in usages do command_buffer_begin_info.flags += { vk.CommandBufferUsageFlag(usage) }
-
-	vk_warn(vk.BeginCommandBuffer(command_buffer, &command_buffer_begin_info))
-}
-
-command_buffer_end :: proc(
-	command_buffer: Command_Buffer,
-) {
-	vk.EndCommandBuffer(command_buffer)	
-}
-
-queue_submit :: proc(
-	command_buffer: Command_Buffer,
-	queue:          Queue_Type,
-	fence:          Fence = 0
-) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	
-	command_buffer := command_buffer
-	fence          := fence
-	
-	submit_info: vk.SubmitInfo = {
-		sType              = .SUBMIT_INFO,
-		commandBufferCount = 1,
-		pCommandBuffers    = &command_buffer
+	begin_info: vk.CommandBufferBeginInfo = {
+		sType = .COMMAND_BUFFER_BEGIN_INFO,
+		flags = flags
 	}
-
-	vk_warn(vk.QueueSubmit(vk_context.device.queues[queue], 1, &submit_info, fence))
-	vk_warn(vk.WaitForFences(vk_context.device.logical, 1, &fence, true, max(u64)))
-	vk_warn(vk.ResetFences(vk_context.device.logical, 1, &fence))
+	vk_warn(vk.BeginCommandBuffer(command_buffer, &begin_info))
 }
 
-semaphore_create :: proc() -> (
-	semaphore: Semaphore
+vulkan_command_buffer_end :: proc(
+	command_buffer: vk.CommandBuffer
+) {
+	vk_warn(vk.EndCommandBuffer(command_buffer))
+}
+
+vulkan_semaphore_create :: proc {
+	vulkan_semaphore_create_single,
+	vulkan_semaphore_create_array,
+}
+
+vulkan_semaphore_create_single :: proc() -> (
+	semaphore: vk.Semaphore 
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	semaphore_create_info: vk.SemaphoreCreateInfo = { sType = .SEMAPHORE_CREATE_INFO }
 	vk_warn(vk.CreateSemaphore(vk_context.device.logical, &semaphore_create_info, nil, &semaphore))
-	
+
 	return semaphore
 }
 
-semaphore_destroy :: proc(
-	semaphore: Semaphore
+vulkan_semaphore_create_array :: proc(
+	$Count: u32
+) -> (
+	semaphores: [Count]vk.Semaphore
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
-	ensure(semaphore != 0)
 
-	vk.DeviceWaitIdle(vk_context.device.logical)
+	semaphore_create_info: vk.SemaphoreCreateInfo = { sType = .SEMAPHORE_CREATE_INFO }
+	for i in 0..<Count do vk_warn(vk.CreateSemaphore(vk_context.device.logical, &semaphore_create_info, nil, &semaphores[i]))
+
+	return semaphores
+}
+
+vulkan_semaphore_destroy :: proc{
+	vulkan_semaphore_destroy_single,
+	vulkan_semaphore_destroy_array,
+}
+
+vulkan_semaphore_destroy_single :: proc(
+	semaphore: vk.Semaphore
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
 }
 
-fence_create :: proc(
+vulkan_semaphore_destroy_array :: proc(
+	semaphores: [$Count]vk.Semaphore
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
+	for semaphore in semaphores do vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
+}
+
+vulkan_fence_create :: proc {
+	vulkan_fence_create_single,
+	vulkan_fence_create_array,
+}
+
+vulkan_fence_create_single :: proc(
 	signaled: bool = true
 ) -> (
-	fence: Fence
+	fence: vk.Fence
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	fence_create_info: vk.FenceCreateInfo = {
-		 sType = .FENCE_CREATE_INFO,
+		sType = .FENCE_CREATE_INFO,
+		flags = {}
 	}
-	fence_create_info.flags = {.SIGNALED} if signaled else {}
+	if signaled do fence_create_info.flags = {.SIGNALED}
 	
-	vk_warn(vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fence))
-	
+	vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fence)
+
 	return fence
 }
 
-fence_destroy :: proc(
-	fence: Fence
+vulkan_fence_create_array :: proc(
+	signaled: bool = true,
+	$Count:   u32
+) -> (
+	fences: [Count]vk.Fence
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
-	ensure(fence != 0)
 
-	vk.DeviceWaitIdle(vk_context.device.logical)
+	fence_create_info: vk.FenceCreateInfo = {
+		sType = .FENCE_CREATE_INFO,
+		flags = {}
+	}
+	if signaled do fence_create_info.flags = {.SIGNALED}
+
+	for i in 0..<Count do vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fences[i])
+
+	return fences
+}
+
+vulkan_fence_destroy :: proc{
+	vulkan_fence_destroy_single,
+	vulkan_fence_destroy_array,
+}
+
+vulkan_fence_destroy_single :: proc(
+	fence: vk.Fence
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	vk.DestroyFence(vk_context.device.logical, fence, nil)
+}
+
+vulkan_fence_destroy_array :: proc(
+	fences: [$Count]vk.Fence
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
+	for fence in fences do vk.DestroyFence(vk_context.device.logical, fence, nil)
+}
+
+vulkan_get_next_swapchain_image_index :: proc(
+	signal_image_available: vk.Semaphore,
+	block_until:            vk.Fence,
+) -> (
+	image_index: u32
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	block_until := block_until
+
+	vk_warn(vk.WaitForFences(vk_context.device.logical, 1, &block_until, true, max(u64)))
+	vk_warn(vk.ResetFences(vk_context.device.logical, 1, &block_until))
+
+	result := vk.AcquireNextImageKHR(
+		vk_context.device.logical,
+		vk_context.swapchain.handle,
+		max(u64),
+		signal_image_available,
+		0,
+		&image_index
+	)
+
+	#partial switch (result) {
+	case .SUCCESS:
+		return image_index
+	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
+		log.info("Vulkan - Swapchain: Need to recreate swapchain.")
+		return image_index
+	case:
+		log.fatal("Vulkan - Swapchain: Failed to acquire next swapchain image, exiting...")
+		os.exit(-1)
+	}
+}
+
+vulkan_submit_to_queue :: proc(
+	queue_type:      Queue_Type,
+	command_buffer:  vk.CommandBuffer,
+	signal_finished: vk.Semaphore          = 0,
+	wait_for:        vk.Semaphore          = 0,
+	wait_for_stages: vk.PipelineStageFlags = {},
+	block_until:     vk.Fence              = 0,
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	command_buffer := command_buffer
+
+	submit_info: vk.SubmitInfo = {
+		sType              = .SUBMIT_INFO,
+		commandBufferCount = 1,
+		pCommandBuffers    = &command_buffer
+	}
+
+	if signal_finished != 0 {
+		signal_finished := signal_finished
+		submit_info.signalSemaphoreCount = 1
+		submit_info.pSignalSemaphores    = &signal_finished
+	}
+
+	if wait_for != 0 {
+		wait_for        := wait_for
+		wait_for_stages := wait_for_stages
+		submit_info.waitSemaphoreCount = 1
+		submit_info.pWaitSemaphores    = &wait_for
+		submit_info.pWaitDstStageMask  = &wait_for_stages
+	}
+
+	if block_until != 0 {
+		block_until := block_until
+		vk_warn(vk.QueueSubmit(vk_context.device.queues[queue_type], 1, &submit_info, block_until))
+		vk_warn(vk.WaitForFences(vk_context.device.logical, 1, &block_until, true, max(u64)))
+	} else {
+		vk_warn(vk.QueueSubmit(vk_context.device.queues[queue_type], 1, &submit_info, 0))
+		vk_warn(vk.QueueWaitIdle(vk_context.device.queues[queue_type]))
+	}
+}
+
+vulkan_present :: proc(
+	wait_render_finished: vk.Semaphore,
+	image_index:          u32,
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	wait_render_finished := wait_render_finished
+	image_index          := image_index
+
+	present_info: vk.PresentInfoKHR = {
+		sType              = .PRESENT_INFO_KHR,
+		waitSemaphoreCount = 1,
+		pWaitSemaphores    = &wait_render_finished,
+		swapchainCount     = 1,
+		pSwapchains        = &vk_context.swapchain.handle,
+		pImageIndices      = &image_index
+	}
+
+	result := vk.QueuePresentKHR(vk_context.device.queues[.Present], &present_info)
+
+	#partial switch (result) {
+	case .SUCCESS:
+		return
+	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
+		log.info("Vulkan - Swapchain: Need to recreate swapchain")
+	case:
+		log.fatal("Vulkan - Queue: Failed to present to queue, exiting...")
+		os.exit(-1)
+	}
+}
+
+vulkan_command_viewport_set :: proc(
+	command_buffer: vk.CommandBuffer,
+	viewports:      []vk.Viewport
+) {
+	vk.CmdSetViewport(command_buffer, 0, u32(len(viewports)), raw_data(viewports))
+}
+
+vulkan_command_scissor_set :: proc(
+	command_buffer: vk.CommandBuffer,
+	scissors:       []vk.Rect2D
+) {
+	vk.CmdSetScissor(command_buffer, 0, u32(len(scissors)), raw_data(scissors))
+}
+
+vulkan_command_swapchain_image_barrier :: proc(
+	command_buffer:  vk.CommandBuffer,
+	image_index:     u32,
+	src_stage_mask:  vk.PipelineStageFlags,
+	dst_stage_mask:  vk.PipelineStageFlags,
+	src_access_mask: vk.AccessFlags        = {},
+	dst_access_mask: vk.AccessFlags        = {},
+	old_layout:      vk.ImageLayout        = .UNDEFINED,
+	new_layout:      vk.ImageLayout        = .UNDEFINED,
+	aspect_mask:     vk.ImageAspectFlags   = {},
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+	ensure(image_index < u32(len(vk_context.swapchain.images)))
+	
+	barrier: vk.ImageMemoryBarrier = {
+		sType               = .IMAGE_MEMORY_BARRIER,
+		dstAccessMask       = dst_access_mask,
+		srcAccessMask       = src_access_mask,
+		oldLayout           = old_layout,
+		newLayout           = new_layout,
+		image               = vk_context.swapchain.images[image_index],
+		subresourceRange    = {
+			aspectMask     = aspect_mask,
+			baseMipLevel   = 0,
+			levelCount     = 1,
+			baseArrayLayer = 0,
+			layerCount     = 1
+		},		
+	}
+
+	vk.CmdPipelineBarrier(
+		command_buffer,
+		src_stage_mask,
+		dst_stage_mask,
+		{},
+		0, nil,
+		0, nil,
+		1, &barrier
+	)
 }

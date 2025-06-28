@@ -38,7 +38,7 @@ input_init :: proc(
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 	ensure(!input.initialised)
 
 	input = {
@@ -62,13 +62,13 @@ input_destroy :: proc() {
 
 @(private)
 input_poll :: proc() {
-	ensure(window.initialised)
+	ensure(glfw_context.initialised)
 	ensure(input.initialised)
 
 	// keyboard
 	for key in Keycode {
 		state := &input.key_states[key]
-		new_state := glfw.GetKey(window.handle, i32(key))
+		new_state := glfw.GetKey(glfw_context.handle, i32(key))
 		
 		if new_state == glfw.PRESS {
 			switch (state^) {
@@ -90,7 +90,7 @@ input_poll :: proc() {
 	// mouse buttons
 	for button in Mousecode {
 		state := &input.mouse_states[button]
-		new_state := glfw.GetMouseButton(window.handle, i32(button))
+		new_state := glfw.GetMouseButton(glfw_context.handle, i32(button))
 		
 		if new_state == glfw.PRESS {
 			switch (state^) {
@@ -110,14 +110,14 @@ input_poll :: proc() {
 	}
 
 	// mouse pos
-	x, y := glfw.GetCursorPos(window.handle)
+	x, y := glfw.GetCursorPos(glfw_context.handle)
 	prev_mouse_pos := input.mouse_pos
 	
 	input.mouse_pos     = {x, y}
 	input.rel_mouse_pos = input.mouse_pos - prev_mouse_pos
 
 	// NOTE(Mitchell): recentre mouse when moved (while locked) to keep it relative to the window centre
-	if input.mouse_mode == .Locked do glfw.SetCursorPos(window.handle,f64(window.width) / 2, f64(window.height) / 2)
+	if input.mouse_mode == .Locked do glfw.SetCursorPos(glfw_context.handle,f64(glfw_context.width) / 2, f64(glfw_context.height) / 2)
 }
 
 input_is_key_pressed :: proc(
@@ -243,6 +243,6 @@ input_set_mouse_mode :: proc(
 ) {
 	ensure(input.initialised)
 
-	glfw.SetInputMode(window.handle, glfw.CURSOR, i32(mode))
+	glfw.SetInputMode(glfw_context.handle, glfw.CURSOR, i32(mode))
 	input.mouse_mode = mode
 }
