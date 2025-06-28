@@ -7,6 +7,11 @@ import "vendor:glfw"
 @(private)
 input_ctx: Input_Context
 
+@(private)
+MAX_INPUT_KEYS :: 349 // From GLFW
+@(private)
+key_infos: [MAX_INPUT_KEYS]Key_Info
+
 // Note(Jack): The current input system uses a map to assign key binds,
 // this is used to reduce code complexity and gives the side effect of
 // binding a key overriding the old bind. An array would likely be more
@@ -22,6 +27,7 @@ init :: proc(window: glfw.WindowHandle) {
 	input_ctx.initialised = true
 }
 
+@(require_results)
 init_mapping_ctx :: proc(window: glfw.WindowHandle) -> Mapping_Context {
 	assert(window != nil)
 	assert(input_ctx.initialised)
@@ -46,6 +52,10 @@ bind_mapping_ctx :: proc(ctx: ^Mapping_Context) {
 	input_ctx.current_map = ctx
 }
 
+is_key_down :: proc(key: Key) -> bool {
+	return key_infos[key.code].isDown
+}
+
 destroy :: proc(contexts: ..^Mapping_Context) {
 	assert(input_ctx.initialised)
 	for ctx in contexts {
@@ -66,6 +76,7 @@ key_callback :: proc "c" (
 	mods: i32,
 ) {
 	context = input_ctx.odin_ctx
+	if action != glfw.REPEAT do key_infos[key_code].isDown = !key_infos[key_code].isDown
 	key := Key {
 		code     = transmute(Key_Code)key_code,
 		modifier = transmute(Key_Modifiers)mods,

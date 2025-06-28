@@ -127,3 +127,9 @@ Input_Context :: struct {
 	initialised: bool,
 }
 
+@(private)
+Key_Info :: struct {
+	code:   Key_Code,
+	isDown: bool,
+}
+
