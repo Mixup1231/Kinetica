@@ -363,7 +363,7 @@ vulkan_command_pool_destroy :: proc(
 
 vulkan_command_buffer_create :: proc {
 	vulkan_command_buffer_create_single,
-	vulkan_command_buffer_create_array,
+	vulkan_command_buffer_create_slice,
 }
 
 vulkan_command_buffer_create_single :: proc(
@@ -387,13 +387,15 @@ vulkan_command_buffer_create_single :: proc(
 	return command_buffer
 }
 
-vulkan_command_buffer_create_array :: proc(
+vulkan_command_buffer_create_slice :: proc(
 	command_pool: vk.CommandPool,
 	level:        vk.CommandBufferLevel = .PRIMARY,
-	$Count:       u32
+	count:        u32,
+	allocator := context.allocator
 ) -> (
-	command_buffers: [Count]vk.CommandBuffer
+	command_buffers: []vk.CommandBuffer
 ) {
+	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(command_pool != 0)
@@ -401,10 +403,11 @@ vulkan_command_buffer_create_array :: proc(
 	allocate_info: vk.CommandBufferAllocateInfo = {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		commandPool        = command_pool,
-		commandBufferCount = Count,
+		commandBufferCount = count,
 		level              = vk.CommandBufferLevel(level)
 	}
-	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, raw_data(command_buffers[:])))
+	command_buffers = make([]vk.CommandBuffer, count)
+	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, raw_data(command_buffers)))
 
 	return command_buffers
 }
@@ -434,7 +437,7 @@ vulkan_command_buffer_end :: proc(
 
 vulkan_semaphore_create :: proc {
 	vulkan_semaphore_create_single,
-	vulkan_semaphore_create_array,
+	vulkan_semaphore_create_slice,
 }
 
 vulkan_semaphore_create_single :: proc() -> (
@@ -449,23 +452,26 @@ vulkan_semaphore_create_single :: proc() -> (
 	return semaphore
 }
 
-vulkan_semaphore_create_array :: proc(
-	$Count: u32
+vulkan_semaphore_create_slice :: proc(
+	count: u32,
+	allocator := context.allocator
 ) -> (
-	semaphores: [Count]vk.Semaphore
+	semaphores: []vk.Semaphore
 ) {
+	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	semaphore_create_info: vk.SemaphoreCreateInfo = { sType = .SEMAPHORE_CREATE_INFO }
-	for i in 0..<Count do vk_warn(vk.CreateSemaphore(vk_context.device.logical, &semaphore_create_info, nil, &semaphores[i]))
+	semaphores = make([]vk.Semaphore, count)
+	for i in 0..<count do vk_warn(vk.CreateSemaphore(vk_context.device.logical, &semaphore_create_info, nil, &semaphores[i]))
 
 	return semaphores
 }
 
 vulkan_semaphore_destroy :: proc{
 	vulkan_semaphore_destroy_single,
-	vulkan_semaphore_destroy_array,
+	vulkan_semaphore_destroy_slice,
 }
 
 vulkan_semaphore_destroy_single :: proc(
@@ -478,19 +484,20 @@ vulkan_semaphore_destroy_single :: proc(
 	vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
 }
 
-vulkan_semaphore_destroy_array :: proc(
-	semaphores: [$Count]vk.Semaphore
+vulkan_semaphore_destroy_slice :: proc(
+	semaphores: []vk.Semaphore
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	for semaphore in semaphores do vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
+	delete(semaphores)
 }
 
 vulkan_fence_create :: proc {
 	vulkan_fence_create_single,
-	vulkan_fence_create_array,
+	vulkan_fence_create_slice,
 }
 
 vulkan_fence_create_single :: proc(
@@ -512,12 +519,14 @@ vulkan_fence_create_single :: proc(
 	return fence
 }
 
-vulkan_fence_create_array :: proc(
+vulkan_fence_create_slice :: proc(
 	signaled: bool = true,
-	$Count:   u32
+	count:    u32,
+	allocator := context.allocator
 ) -> (
-	fences: [Count]vk.Fence
+	fences: []vk.Fence
 ) {
+	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
@@ -527,14 +536,15 @@ vulkan_fence_create_array :: proc(
 	}
 	if signaled do fence_create_info.flags = {.SIGNALED}
 
-	for i in 0..<Count do vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fences[i])
+	fences = make([]vk.Fence, count)
+	for i in 0..<count do vk.CreateFence(vk_context.device.logical, &fence_create_info, nil, &fences[i])
 
 	return fences
 }
 
 vulkan_fence_destroy :: proc{
 	vulkan_fence_destroy_single,
-	vulkan_fence_destroy_array,
+	vulkan_fence_destroy_slice,
 }
 
 vulkan_fence_destroy_single :: proc(
@@ -547,22 +557,25 @@ vulkan_fence_destroy_single :: proc(
 	vk.DestroyFence(vk_context.device.logical, fence, nil)
 }
 
-vulkan_fence_destroy_array :: proc(
-	fences: [$Count]vk.Fence
+vulkan_fence_destroy_slice :: proc(
+	fences: []vk.Fence
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	for fence in fences do vk.DestroyFence(vk_context.device.logical, fence, nil)
+	delete(fences)
 }
 
 vulkan_swapchain_get_next_image_index :: proc(
 	signal_image_available: vk.Semaphore,
 	block_until:            vk.Fence,
+	allocator := context.allocator
 ) -> (
 	image_index: u32
 ) {
+	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
@@ -585,7 +598,8 @@ vulkan_swapchain_get_next_image_index :: proc(
 	case .SUCCESS:
 		return image_index
 	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
-		log.info("Vulkan - Swapchain: Need to recreate swapchain.")
+		log.info("Vulkan - Swapchain: recreating swapchain")
+		vulkan_swapchain_recreate()
 		return image_index
 	case:
 		log.fatal("Vulkan - Swapchain: Failed to acquire next swapchain image, exiting...")
@@ -639,7 +653,9 @@ vulkan_submit_to_queue :: proc(
 vulkan_present :: proc(
 	wait_render_finished: vk.Semaphore,
 	image_index:          u32,
+	allocator := context.allocator
 ) {
+	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
@@ -662,7 +678,8 @@ vulkan_present :: proc(
 	case .SUCCESS:
 		return
 	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
-		log.info("Vulkan - Swapchain: Need to recreate swapchain")
+		log.info("Vulkan - Swapchain: recreating swapchain")
+		vulkan_swapchain_recreate()
 	case:
 		log.fatal("Vulkan - Queue: Failed to present to queue, exiting...")
 		os.exit(-1)
@@ -683,7 +700,7 @@ vulkan_command_scissor_set :: proc(
 	vk.CmdSetScissor(command_buffer, 0, u32(len(scissors)), raw_data(scissors))
 }
 
-vulkan_swapchain_image_get :: proc(
+vulkan_swapchain_get_image :: proc(
 	index: u32
 ) -> (
 	image: vk.Image
@@ -695,7 +712,7 @@ vulkan_swapchain_image_get :: proc(
 	return vk_context.swapchain.images[index]
 }
 
-vulkan_swapchain_image_view_get :: proc(
+vulkan_swapchain_get_image_view :: proc(
 	index: u32
 ) -> (
 	image: vk.ImageView
@@ -705,6 +722,24 @@ vulkan_swapchain_image_view_get :: proc(
 	ensure(index < u32(len(vk_context.swapchain.image_views)))
 
 	return vk_context.swapchain.image_views[index]
+}
+
+vulkan_swapchain_get_image_count :: proc() -> (
+	image_count: u32
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	return u32(len(vk_context.swapchain.images))
+}
+
+vulkan_swapchain_get_extent :: proc() -> (
+	extent: vk.Extent2D
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	return vk_context.swapchain.attributes.extent
 }
 
 vulkan_command_image_barrier :: proc(

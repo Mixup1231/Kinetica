@@ -5,11 +5,14 @@ import "core:log"
 
 import "../../kinetica/core"
 
+g_width: i32 = 1920
+g_height: i32 = 1080
+
 main :: proc() {
 	context.logger = log.create_console_logger()
 	defer log.destroy_console_logger(context.logger)
 
-	core.window_create(1920, 1080, "test")
+	core.window_create(g_width, g_height, "test")
 	defer core.window_destroy()
 
 	format              := core.vulkan_get_swapchain_color_format()
@@ -41,7 +44,7 @@ main :: proc() {
 		},
 	)
 		
-	Frames_In_Flight :: 3
+	Frames_In_Flight := core.vulkan_swapchain_get_image_count()
 	command_pool    := core.vulkan_command_pool_create(.Graphics)
 	command_buffers := core.vulkan_command_buffer_create(command_pool, .PRIMARY, Frames_In_Flight)	
 	signal_rendered := core.vulkan_semaphore_create(Frames_In_Flight)
@@ -69,6 +72,7 @@ main :: proc() {
 
 		frame = (frame + 1) % Frames_In_Flight
 
+		extent := core.vulkan_swapchain_get_extent()
 		image_index = core.vulkan_swapchain_get_next_image_index(wait_available[frame], in_flight[frame])
 
 		core.vulkan_command_buffer_reset(command_buffers[frame])
@@ -76,7 +80,7 @@ main :: proc() {
 
 		core.vulkan_command_image_barrier(
 			command_buffer  = command_buffers[frame],
-			image           = core.vulkan_swapchain_image_get(image_index),
+			image           = core.vulkan_swapchain_get_image(image_index),
 			dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
 			old_layout      = .UNDEFINED,
 			new_layout      = .COLOR_ATTACHMENT_OPTIMAL,
@@ -85,15 +89,13 @@ main :: proc() {
 		)
 	
 		core.vulkan_command_begin_rendering(
-			command_buffers[frame],
-			{
+			command_buffer = command_buffers[frame],
+			render_area = {
 				offset = {0, 0},
-				extent = {1920, 1080}
+				extent = extent
 			},
 			color_attachments = {
-				core.vulkan_color_attachment_create(
-					core.vulkan_swapchain_image_view_get(image_index)
-				)
+				core.vulkan_color_attachment_create(core.vulkan_swapchain_get_image_view(image_index))
 			}
 		)
 		
@@ -102,8 +104,8 @@ main :: proc() {
 			{{
 				x = 0,
 				y = 0,
-				width = 1920,
-				height = 1080
+				width = f32(extent.width),
+				height = f32(extent.height)
 			}}
 		)
 
@@ -111,7 +113,7 @@ main :: proc() {
 			command_buffers[frame],
 			{{
 				offset = {0, 0},
-				extent = {1920, 1080}
+				extent = extent
 			}}
 		)
 		
@@ -123,7 +125,7 @@ main :: proc() {
 
 		core.vulkan_command_image_barrier(
 			command_buffer  = command_buffers[frame],
-			image           = core.vulkan_swapchain_image_get(image_index),
+			image           = core.vulkan_swapchain_get_image(image_index),
 			src_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
 			dst_stage_mask  = {.BOTTOM_OF_PIPE},
 			src_access_mask = {.COLOR_ATTACHMENT_WRITE},

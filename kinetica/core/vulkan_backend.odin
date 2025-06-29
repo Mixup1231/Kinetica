@@ -9,7 +9,7 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 // TODO(Mitchell):
-// Implement Vulkan debug logging (callback)
+// Vulkan debug logging (callback)
 // Caching valid physical devices 
 
 Instance :: struct {
@@ -83,7 +83,6 @@ VK_Context :: struct {
 
 	initialised: bool,
 }
-
 vk_context: VK_Context
 
 vulkan_init :: proc(
@@ -457,7 +456,6 @@ vulkan_swapchain_query_support :: proc(
 	support_details: Swapchain_Support_Details
 ) {
 	context.allocator = allocator
-	ensure(!vk_context.swapchain.support_details.initialised)
 
 	vk_fatal(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.device.physical, vk_context.surface.handle, &support_details.capabilities))
 
@@ -486,7 +484,6 @@ vulkan_swapchain_create :: proc(
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
-	ensure(!vk_context.swapchain.initialised)
 	ensure(swapchain_attributes != nil)
 
 	vk_context.swapchain.attributes = swapchain_attributes^
@@ -576,6 +573,7 @@ vulkan_swapchain_create :: proc(
 	vk_fatal(vk.CreateSwapchainKHR(vk_context.device.logical, &swapchain_create_info, nil, &vk_context.swapchain.handle))
 
 	log.info("Vulkan: Successfully created the swapchain")
+	log.info("Vulkan - Swapchain Attributes:\n", vk_context.swapchain.attributes)
 
 	swapchain := &vk_context.swapchain
 	if swapchain.images == nil {
@@ -612,6 +610,38 @@ vulkan_swapchain_create :: proc(
 	}
 
 	vk_context.swapchain.initialised = true
+}
+
+vulkan_swapchain_destroy :: proc() {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	for image_view in vk_context.swapchain.image_views do vk.DestroyImageView(vk_context.device.logical, image_view, nil)
+	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
+}
+
+vulkan_swapchain_recreate :: proc(
+	allocator := context.allocator
+) {
+	context.allocator = allocator
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	width, height: i32
+	for width == 0 || height == 0 {
+		width, height = window_get_framebuffer_size()
+		window_wait_events()
+	}
+
+	attributes := vk_context.swapchain.attributes
+	attributes.extent.width  = u32(width)
+	attributes.extent.height = u32(height)
+	
+	vk.DeviceWaitIdle(vk_context.device.logical)
+	vulkan_swapchain_destroy()
+	vulkan_swapchain_create(&attributes)
 }
 
 vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
