@@ -2,6 +2,7 @@ package core
 
 import "core:os"
 import "core:log"
+import "core:reflect"
 
 import vk "vendor:vulkan"
 
@@ -12,6 +13,11 @@ Queue_Type :: enum {
 	Compute,
 	Transfer,
 	Present
+}
+
+Vertex_Member :: struct {
+	offset: uintptr,
+	format: vk.Format,
 }
 
 vulkan_shader_module_create :: proc(
@@ -835,4 +841,49 @@ vulkan_command_begin_rendering :: proc(
 	}
 
 	vk.CmdBeginRendering(command_buffer, &rendering_info)
+}
+
+vulkan_vertex_description_create :: proc(
+	$Vertex:          typeid,
+	binding:          u32    = 0,
+	start_location:   u32    = 0,
+	allocator := context.allocator
+) -> (
+	binding_description:    vk.VertexInputBindingDescription,
+	attribute_descriptions: []vk.VertexInputAttributeDescription
+) {
+	context.allocator = allocator
+
+	binding_description = {
+		binding   = binding,
+		stride    = u32(type_info_of(Vertex).size),
+		inputRate = .VERTEX
+	}
+	
+	field_count := reflect.struct_field_count(Vertex)
+	attribute_descriptions = make([]vk.VertexInputAttributeDescription, field_count)
+	
+	for i in 0..<field_count {
+		field := reflect.struct_field_at(Vertex, i)
+		
+		attribute_descriptions[i] = {
+			location = start_location + u32(i),
+			binding  = binding,
+			offset   = u32(field.offset),
+		}
+
+		if field.type.size == 4 {
+			attribute_descriptions[i].format = .R32_SFLOAT
+		} else if field.type.size == 8 {
+			attribute_descriptions[i].format = .R32G32_SFLOAT
+		} else if field.type.size == 12 {
+			attribute_descriptions[i].format = .R32G32B32_SFLOAT
+		} else if field.type.size == 16 {
+			attribute_descriptions[i].format = .R32G32B32A32_SFLOAT
+		} else {
+			ensure(false)
+		}
+	}
+
+	return binding_description, attribute_descriptions
 }

@@ -5,6 +5,12 @@ import "core:log"
 
 import "../../kinetica/core"
 
+Vertex :: struct {
+	position: [3]f32,
+	color:    [3]f32,
+	uv:       [2]f32,
+}
+
 g_width: i32 = 1920
 g_height: i32 = 1080
 
@@ -60,6 +66,9 @@ main :: proc() {
 		core.vulkan_shader_module_destroy(frag)
 		core.vulkan_graphics_pipeline_destroy(pipeline, pipeline_layout)
 	}
+
+	binding, attributes := core.vulkan_vertex_description_create(Vertex, 0, 0)
+	defer delete(attributes)
 
 	image_index: u32
 	frame: u32
