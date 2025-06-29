@@ -326,6 +326,13 @@ vulkan_graphics_pipeline_destroy :: proc(
 	vk.DestroyPipeline(vk_context.device.logical, pipeline, nil)
 }
 
+vulkan_command_graphics_pipeline_bind :: #force_inline proc(
+	command_buffer: vk.CommandBuffer,
+	pipeline:       vk.Pipeline
+) {
+	vk.CmdBindPipeline(command_buffer, .GRAPHICS, pipeline)
+}
+
 vulkan_command_pool_create :: proc(
 	queue_type: Queue_Type
 ) -> (
@@ -550,7 +557,7 @@ vulkan_fence_destroy_array :: proc(
 	for fence in fences do vk.DestroyFence(vk_context.device.logical, fence, nil)
 }
 
-vulkan_get_next_swapchain_image_index :: proc(
+vulkan_swapchain_get_next_image_index :: proc(
 	signal_image_available: vk.Semaphore,
 	block_until:            vk.Fence,
 ) -> (
@@ -676,35 +683,51 @@ vulkan_command_scissor_set :: proc(
 	vk.CmdSetScissor(command_buffer, 0, u32(len(scissors)), raw_data(scissors))
 }
 
-vulkan_command_swapchain_image_barrier :: proc(
-	command_buffer:  vk.CommandBuffer,
-	image_index:     u32,
-	src_stage_mask:  vk.PipelineStageFlags,
-	dst_stage_mask:  vk.PipelineStageFlags,
-	src_access_mask: vk.AccessFlags        = {},
-	dst_access_mask: vk.AccessFlags        = {},
-	old_layout:      vk.ImageLayout        = .UNDEFINED,
-	new_layout:      vk.ImageLayout        = .UNDEFINED,
-	aspect_mask:     vk.ImageAspectFlags   = {},
+vulkan_swapchain_image_get :: proc(
+	index: u32
+) -> (
+	image: vk.Image
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.swapchain.initialised)
-	ensure(image_index < u32(len(vk_context.swapchain.images)))
-	
+	ensure(index < u32(len(vk_context.swapchain.images)))
+
+	return vk_context.swapchain.images[index]
+}
+
+vulkan_swapchain_image_view_get :: proc(
+	index: u32
+) -> (
+	image: vk.ImageView
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+	ensure(index < u32(len(vk_context.swapchain.image_views)))
+
+	return vk_context.swapchain.image_views[index]
+}
+
+vulkan_command_image_barrier :: proc(
+	command_buffer:    vk.CommandBuffer,
+	image:             vk.Image,
+	src_access_mask:   vk.AccessFlags           = {},
+	dst_access_mask:   vk.AccessFlags           = {},
+	old_layout:        vk.ImageLayout           = .UNDEFINED,
+	new_layout:        vk.ImageLayout           = .UNDEFINED,
+	subresource_range: vk.ImageSubresourceRange = {{.COLOR}, 0, 1, 0, 1},
+	src_stage_mask:    vk.PipelineStageFlags    = {},
+	dst_stage_mask:    vk.PipelineStageFlags    = {}
+) {
+	ensure(vk_context.initialised)
+
 	barrier: vk.ImageMemoryBarrier = {
-		sType               = .IMAGE_MEMORY_BARRIER,
-		dstAccessMask       = dst_access_mask,
-		srcAccessMask       = src_access_mask,
-		oldLayout           = old_layout,
-		newLayout           = new_layout,
-		image               = vk_context.swapchain.images[image_index],
-		subresourceRange    = {
-			aspectMask     = aspect_mask,
-			baseMipLevel   = 0,
-			levelCount     = 1,
-			baseArrayLayer = 0,
-			layerCount     = 1
-		},		
+		sType            = .IMAGE_MEMORY_BARRIER,
+		dstAccessMask    = dst_access_mask,
+		srcAccessMask    = src_access_mask,
+		oldLayout        = old_layout,
+		newLayout        = new_layout,
+		image            = image,
+		subresourceRange = subresource_range
 	}
 
 	vk.CmdPipelineBarrier(
@@ -716,4 +739,65 @@ vulkan_command_swapchain_image_barrier :: proc(
 		0, nil,
 		1, &barrier
 	)
+}
+
+vulkan_command_draw :: #force_inline proc(
+	command_buffer: vk.CommandBuffer,
+	vertex_count:   u32,
+	instance_count: u32 = 1,
+	first_vertex:   u32 = 0,
+	first_instance: u32 = 0
+) {
+	vk.CmdDraw(command_buffer, vertex_count, instance_count, first_vertex, first_instance)
+}
+
+vulkan_command_end_rendering :: #force_inline proc(
+	command_buffer: vk.CommandBuffer
+) {
+	vk.CmdEndRendering(command_buffer)
+}
+
+vulkan_color_attachment_create :: proc(
+	image_view:  vk.ImageView,
+	load_op:     vk.AttachmentLoadOp  = .CLEAR,
+	store_op:    vk.AttachmentStoreOp = .STORE,
+	clear_color: [4]f32               = {0, 0, 0, 0},
+) -> (
+	color_attachment: vk.RenderingAttachmentInfo
+) {
+	clear_value: vk.ClearValue
+	clear_value.color.float32 = clear_color
+	
+	color_attachment = {
+		sType       = .RENDERING_ATTACHMENT_INFO,
+		imageView   = image_view,
+		imageLayout = .COLOR_ATTACHMENT_OPTIMAL,
+		loadOp      = load_op,
+		storeOp     = store_op,
+		clearValue  = clear_value
+	}
+
+	return color_attachment
+}
+
+vulkan_command_begin_rendering :: proc(
+	command_buffer:     vk.CommandBuffer,
+	render_area:        vk.Rect2D,
+	layer_count:        u32                          = 1,
+	view_mask:          u32                          = 0,
+	color_attachments:  []vk.RenderingAttachmentInfo = {},
+	depth_attachment:   ^vk.RenderingAttachmentInfo  = nil,
+	stencil_attachment: ^vk.RenderingAttachmentInfo  = nil,
+) {	
+	rendering_info: vk.RenderingInfo = {
+		sType                = .RENDERING_INFO,
+		renderArea           = render_area,
+		layerCount           = layer_count,
+		colorAttachmentCount = u32(len(color_attachments)),
+		pColorAttachments    = raw_data(color_attachments),
+		pDepthAttachment     = depth_attachment,
+		pStencilAttachment   = stencil_attachment,
+	}
+
+	vk.CmdBeginRendering(command_buffer, &rendering_info)
 }

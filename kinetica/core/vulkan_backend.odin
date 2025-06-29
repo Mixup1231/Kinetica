@@ -166,7 +166,7 @@ vulkan_init :: proc(
 
 	best_rating: u64
 	for physical_device in physical_devices {
-		valid, rating, queue_indices := vulkan_rate_physical_device(physical_device, &device_attributes)
+		valid, rating, queue_indices := vulkan_physical_device_rate(physical_device, &device_attributes)
 		if valid && rating > best_rating {
 			best_rating = rating
 			vk_context.device.physical      = physical_device
@@ -231,7 +231,7 @@ vulkan_init :: proc(
 	log.info("Vulkan: Successfully created logical device")
 
 	// swapchain
-	vulkan_create_swapchain(&swapchain_attributes)
+	vulkan_swapchain_create(&swapchain_attributes)
 	
 	vk_context.initialised = true
 }
@@ -268,7 +268,7 @@ vulkan_destroy :: proc() {
 	vk.DestroyInstance(vk_context.instance.handle, nil)
 }
 
-vulkan_rate_physical_device :: proc(
+vulkan_physical_device_rate :: proc(
 	physical_device:   vk.PhysicalDevice,
 	device_attributes: ^Device_Attributes,
 	allocator := context.allocator
@@ -352,7 +352,7 @@ vulkan_rate_physical_device :: proc(
 		vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
 
 		// exclusive present and graphics queue
-		if can_present && .GRAPHICS in flags && .GRAPHICS not_in queues_found && family.queueCount >= 2{
+		if can_present && .GRAPHICS in flags && .GRAPHICS not_in queues_found && family.queueCount >= 2 {
 			queues_found[.GRAPHICS]   = u32(i)
 			present_index             = u32(i)
 			queue_index_count[u32(i)] = 2
@@ -451,7 +451,7 @@ vulkan_rate_physical_device :: proc(
 }
 
 // NOTE(Mitchell): Uses vk_context.device.physical and vk_context.surface.handle to retrieve information
-vulkan_query_swapchain_support :: proc(
+vulkan_swapchain_query_support :: proc(
 	allocator := context.allocator
 ) -> (
 	support_details: Swapchain_Support_Details
@@ -481,7 +481,7 @@ vulkan_query_swapchain_support :: proc(
 }
 
 // NOTE(Mitchell): This is a separate function because you need to recreate the swapchain on resize
-vulkan_create_swapchain :: proc(
+vulkan_swapchain_create :: proc(
 	swapchain_attributes: ^Swapchain_Attributes,
 	allocator := context.allocator
 ) {
@@ -504,7 +504,7 @@ vulkan_create_swapchain :: proc(
 		delete(support_details.present_modes)
 	}
 	
-	support_details^ = vulkan_query_swapchain_support()
+	support_details^ = vulkan_swapchain_query_support()
 
 	if support_details.capabilities.currentExtent.width != max(u32) {
 		swapchain_create_info.imageExtent = support_details.capabilities.currentExtent
@@ -613,7 +613,6 @@ vulkan_create_swapchain :: proc(
 
 	vk_context.swapchain.initialised = true
 }
-
 
 vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {
 	if result != .SUCCESS {
