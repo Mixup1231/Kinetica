@@ -187,14 +187,18 @@ vk_init :: proc(
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
 	defer delete(queue_create_infos)
 
+	priorities := make([][]f32, len(unique_queue_indices))
+
 	i := 0
-	priority: f32 = 1
 	for index, count in unique_queue_indices {
+		priorities[i] = make([]f32, count)
+		for &priority in priorities[i] do priority = 1
+		
 		queue_create_infos[i] = {
 			sType            = .DEVICE_QUEUE_CREATE_INFO,
 			queueFamilyIndex = index,
 			queueCount       = count,
-			pQueuePriorities = &priority
+			pQueuePriorities = raw_data(priorities[i])
 		}
 		i += 1
 	}
@@ -211,13 +215,14 @@ vk_init :: proc(
 	}
 	
 	vk_fatal(vk.CreateDevice(vk_context.device.physical, &device_create_info, nil, &vk_context.device.logical))
+	for &priority in priorities do delete(priority)
 	
 	for index, queue in vk_context.device.queue_indices {
-		if index != max(u32) {
-			stored_index := &unique_queue_indices[index]
-			vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])
-			stored_index^ -= 1
-		}
+		ensure(index != max(u32))
+		
+		stored_index := &unique_queue_indices[index]
+		vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])
+		stored_index^ -= 1
 	}
 
 	for queue, type in vk_context.device.queues do log.info("Vulkan - Queue: ", type, "retrieved with index", vk_context.device.queue_indices[type])
@@ -342,34 +347,34 @@ vk_physical_device_rate :: proc(
 	vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, raw_data(queue_families))
 
 	// desired queue layout
-	for family, i in queue_families {
-		flags := family.queueFlags
+	// for family, i in queue_families {
+	// 	flags := family.queueFlags
 
-		can_present: b32
-		vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
+	// 	can_present: b32
+	// 	vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
 
-		// exclusive present and graphics queue
-		if can_present && .GRAPHICS in flags && .GRAPHICS not_in queues_found && family.queueCount >= 2 {
-			queues_found[.GRAPHICS]   = u32(i)
-			present_index             = u32(i)
-			queue_index_count[u32(i)] = 2
-			continue
-		}
+	// 	// exclusive present and graphics queue
+	// 	if can_present && .GRAPHICS in flags && .GRAPHICS not_in queues_found && family.queueCount >= 2 {
+	// 		queues_found[.GRAPHICS]   = u32(i)
+	// 		present_index             = u32(i)
+	// 		queue_index_count[u32(i)] = 2
+	// 		continue
+	// 	}
 
-		// dedicated compute queue
-		if .COMPUTE in flags && .GRAPHICS not_in flags && .COMPUTE not_in queues_found {
-			queues_found[.COMPUTE]    = u32(i)
-			queue_index_count[u32(i)] = 1
-			continue
-		}
+	// 	// dedicated compute queue
+	// 	if .COMPUTE in flags && .GRAPHICS not_in flags && .COMPUTE not_in queues_found {
+	// 		queues_found[.COMPUTE]    = u32(i)
+	// 		queue_index_count[u32(i)] = 1
+	// 		continue
+	// 	}
 
-		// dedicated transfer queue
-		if .TRANSFER in flags && !(vk.QueueFlags({.GRAPHICS, .COMPUTE}) <= flags) && .TRANSFER not_in queues_found {
-			queues_found[.TRANSFER]   = u32(i)
-			queue_index_count[u32(i)] = 1
-			continue
-		}
-	}
+	// 	// dedicated transfer queue
+	// 	if .TRANSFER in flags && !(vk.QueueFlags({.GRAPHICS, .COMPUTE}) <= flags) && .TRANSFER not_in queues_found {
+	// 		queues_found[.TRANSFER]   = u32(i)
+	// 		queue_index_count[u32(i)] = 1
+	// 		continue
+	// 	}
+	// }
 
 	// fallback queue layout
 	if .GRAPHICS not_in queues_found {
