@@ -23,6 +23,7 @@ main :: proc() {
 	core.window_create(g_width, g_height, "test")
 	defer core.window_destroy()
 
+	log.info("Creating graphics pipeline")
 	format              := core.vk_get_swapchain_color_format()
 	rendering_info      := core.vk_rendering_info_create(color_attachment_formats = {format})	
 	binding, attributes := core.vk_vertex_description_create(Vertex)
@@ -53,7 +54,8 @@ main :: proc() {
 			core.vk_shader_stage_state_create({.FRAGMENT}, frag)
 		},
 	)
-		
+
+	log.info("Creating command buffers and synch objects")
 	Frames_In_Flight := core.vk_swapchain_get_image_count()
 	command_pool    := core.vk_command_pool_create(.Graphics)
 	transfer_pool   := core.vk_command_pool_create(.Transfer)
@@ -100,9 +102,11 @@ main :: proc() {
 	
 	vk_allocator := core.vk_allocator_get_default()
 
+	log.info("Creating vertex and index buffers")
 	vertex_buffer := core.vk_vertex_buffer_create(size_of(quad), &vk_allocator)
 	index_buffer := core.vk_index_buffer_create(size_of(indices), &vk_allocator)
 
+	log.info("Copying to vertex and index buffers")
 	core.vk_buffer_copy_staged(transfer_pool, &vertex_buffer, raw_data(quad[:]), &vk_allocator)
 	core.vk_buffer_copy_staged(transfer_pool, &index_buffer, raw_data(indices[:]), &vk_allocator)
 	
