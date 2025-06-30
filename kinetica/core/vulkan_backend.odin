@@ -376,7 +376,7 @@ vk_physical_device_rate :: proc(
 		for family, i in queue_families {
 			if .GRAPHICS in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				queues_found[.GRAPHICS] = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
+				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
@@ -389,7 +389,7 @@ vk_physical_device_rate :: proc(
 
 			if can_present && queue_index_count[u32(i)]+1 <= family.queueCount {
 				present_index = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
+				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
@@ -399,7 +399,7 @@ vk_physical_device_rate :: proc(
 		for family, i in queue_families {
 			if .COMPUTE in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				queues_found[.COMPUTE] = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
+				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
@@ -409,7 +409,7 @@ vk_physical_device_rate :: proc(
 		for family, i in queue_families {
 			if .TRANSFER in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				queues_found[.TRANSFER] = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
+				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
