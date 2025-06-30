@@ -15,6 +15,7 @@ import vk "vendor:vulkan"
 // Create depth stencil rendering attachment create
 // Create stencil rendering attachment create
 
+VK_Queue_Types :: distinct bit_set[VK_Queue_Type]
 VK_Queue_Type :: enum {
 	Graphics,
 	Compute,
@@ -1035,7 +1036,7 @@ vk_buffer_create :: proc(
 	property_flags:  vk.MemoryPropertyFlags      = {},
 	memory_flags:    vk.MemoryAllocateFlags      = {},
 	sharing_mode:    vk.SharingMode              = .EXCLUSIVE,
-	queues:          [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
+	queues:          VK_Queue_Types              = {},
 	flags:           vk.BufferCreateFlags        = {}
 ) -> (
 	buffer: VK_Buffer
@@ -1043,15 +1044,19 @@ vk_buffer_create :: proc(
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
-	queue_indices: [Queue_Count]u32
-	for queue, i in queues do queue_indices[i] = vk_context.device.queue_indices[queue]
+	i: u32
+	queue_indices: [len(VK_Queue_Type)]u32
+	for queue in queues {
+		queue_indices[i] = vk_context.device.queue_indices[queue]
+		i += 1
+	}
 	
 	buffer_create_info: vk.BufferCreateInfo = {
 		sType                 = .BUFFER_CREATE_INFO,
 		size                  = size,
 		usage                 = usage,
 		sharingMode           = sharing_mode,
-		queueFamilyIndexCount = u32(len(queue_indices)),
+		queueFamilyIndexCount = i,
 		pQueueFamilyIndices   = raw_data(queue_indices[:]),
 		flags                 = flags
 	}
@@ -1099,10 +1104,10 @@ vk_buffer_destroy :: proc(
 vk_uniform_buffer_create :: proc(
 	size:         vk.DeviceSize,
 	vk_allocator: ^VK_Allocator,
-	memory_flags: vk.MemoryAllocateFlags      = {},
-	sharing_mode: vk.SharingMode              = .EXCLUSIVE,
-	queues:       [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
-	flags:        vk.BufferCreateFlags        = {}
+	memory_flags: vk.MemoryAllocateFlags = {},
+	sharing_mode: vk.SharingMode         = .EXCLUSIVE,
+	queues:       VK_Queue_Types         = {},
+	flags:        vk.BufferCreateFlags   = {}
 ) -> (
 	uniform_buffer: VK_Buffer
 ) {
@@ -1126,10 +1131,10 @@ vk_uniform_buffer_create :: proc(
 vk_vertex_buffer_create :: proc(
 	size:         vk.DeviceSize,
 	vk_allocator: ^VK_Allocator,
-	memory_flags: vk.MemoryAllocateFlags      = {},
-	sharing_mode: vk.SharingMode              = .EXCLUSIVE,
-	queues:       [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
-	flags:        vk.BufferCreateFlags        = {}
+	memory_flags: vk.MemoryAllocateFlags = {},
+	sharing_mode: vk.SharingMode         = .EXCLUSIVE,
+	queues:       VK_Queue_Types         = {},
+	flags:        vk.BufferCreateFlags   = {}
 ) -> (
 	vertex_buffer: VK_Buffer
 ) {
@@ -1159,10 +1164,10 @@ vk_command_vertex_buffers_bind :: #force_inline proc(
 vk_index_buffer_create :: proc(
 	size:         vk.DeviceSize,
 	vk_allocator: ^VK_Allocator,
-	memory_flags: vk.MemoryAllocateFlags      = {},
-	sharing_mode: vk.SharingMode              = .EXCLUSIVE,
-	queues:       [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
-	flags:        vk.BufferCreateFlags        = {}
+	memory_flags: vk.MemoryAllocateFlags = {},
+	sharing_mode: vk.SharingMode         = .EXCLUSIVE,
+	queues:       VK_Queue_Types         = {},
+	flags:        vk.BufferCreateFlags   = {}
 ) -> (
 	index_buffer: VK_Buffer
 ) {
