@@ -25,7 +25,7 @@ Application :: struct {
 	pipeline:         vk.Pipeline,
 	pipeline_layout:  vk.PipelineLayout,
 	quad_vertices:    [4]Vertex,
-	quad_indices:     [6]u32,
+	quad_indices:     [6]u16,
 }
 application: Application
 
