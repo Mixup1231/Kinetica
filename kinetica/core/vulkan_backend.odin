@@ -182,10 +182,7 @@ vk_init :: proc(
 	defer delete(unique_queue_indices)
 
 	// NOTE(Mitchell): We need to know the set of queue indices and the count of queues for each of those indices
-	for index, _ in vk_context.device.queue_indices {
-		if index in unique_queue_indices do (&unique_queue_indices[index])^ += 1 // in set already, increment count
-		if index not_in unique_queue_indices do unique_queue_indices[index] = 1  // not in set, insert
-	}
+	for index, _ in vk_context.device.queue_indices do unique_queue_indices[index] = 1 if index not_in unique_queue_indices else unique_queue_indices[index]+1
 
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
 	defer delete(queue_create_infos)
@@ -379,7 +376,7 @@ vk_physical_device_rate :: proc(
 		for family, i in queue_families {
 			if .GRAPHICS in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				queues_found[.GRAPHICS] = u32(i)
-				(&queue_index_count[u32(i)])^ += 1
+				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
@@ -392,7 +389,7 @@ vk_physical_device_rate :: proc(
 
 			if can_present && queue_index_count[u32(i)]+1 <= family.queueCount {
 				present_index = u32(i)
-				(&queue_index_count[u32(i)])^ += 1
+				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
@@ -402,7 +399,7 @@ vk_physical_device_rate :: proc(
 		for family, i in queue_families {
 			if .COMPUTE in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				queues_found[.COMPUTE] = u32(i)
-				(&queue_index_count[u32(i)])^ += 1
+				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}
@@ -412,7 +409,7 @@ vk_physical_device_rate :: proc(
 		for family, i in queue_families {
 			if .TRANSFER in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				queues_found[.TRANSFER] = u32(i)
-				(&queue_index_count[u32(i)])^ += 1
+				queue_index_count[u32(i)] = 1 if u32(i) in queue_index_count else queue_index_count[u32(i)]+1
 				break
 			}
 		}

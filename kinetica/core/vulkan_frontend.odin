@@ -1085,23 +1085,46 @@ vk_buffer_destroy :: proc(
 	vk.DestroyBuffer(vk_context.device.logical, buffer.handle, nil)
 }
 
+vk_uniform_buffer_create :: proc(
+	size:         vk.DeviceSize,
+	vk_allocator: ^VK_Allocator,
+	memory_flags: vk.MemoryAllocateFlags      = {},
+	sharing_mode: vk.SharingMode              = .EXCLUSIVE,
+	queues:       [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
+	flags:        vk.BufferCreateFlags        = {}
+) -> (
+	uniform_buffer: VK_Buffer
+) {
+	ensure(vk_allocator != nil)
+
+	uniform_buffer = vk_buffer_create(
+		size,
+		{.UNIFORM_BUFFER, .TRANSFER_DST},
+		.Always,
+		vk_allocator,
+		{.HOST_VISIBLE, .HOST_COHERENT},
+		memory_flags,
+		sharing_mode,
+		queues,
+		flags
+	)
+
+	return uniform_buffer
+}
+
 vk_vertex_buffer_create :: proc(
 	size:         vk.DeviceSize,
 	vk_allocator: ^VK_Allocator,
 	memory_flags: vk.MemoryAllocateFlags      = {},
-	usage:        vk.BufferUsageFlags         = {},
 	sharing_mode: vk.SharingMode              = .EXCLUSIVE,
 	queues:       [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
 	flags:        vk.BufferCreateFlags        = {}
 ) -> (
 	vertex_buffer: VK_Buffer
 ) {
-	usage := usage
-	usage += {.TRANSFER_DST, .VERTEX_BUFFER}
-
 	vertex_buffer = vk_buffer_create(
 		size,
-		usage,
+		{.TRANSFER_DST, .VERTEX_BUFFER},
 		.Never,
 		vk_allocator,
 		{.DEVICE_LOCAL},
@@ -1126,19 +1149,15 @@ vk_index_buffer_create :: proc(
 	size:         vk.DeviceSize,
 	vk_allocator: ^VK_Allocator,
 	memory_flags: vk.MemoryAllocateFlags      = {},
-	usage:        vk.BufferUsageFlags         = {},
 	sharing_mode: vk.SharingMode              = .EXCLUSIVE,
 	queues:       [$Queue_Count]VK_Queue_Type = [?]VK_Queue_Type{},
 	flags:        vk.BufferCreateFlags        = {}
 ) -> (
 	index_buffer: VK_Buffer
 ) {
-	usage := usage
-	usage += {.TRANSFER_DST, .INDEX_BUFFER}
-
 	index_buffer = vk_buffer_create(
 		size,
-		usage,
+		{.TRANSFER_DST, .INDEX_BUFFER},
 		.Never,
 		vk_allocator,
 		{.DEVICE_LOCAL},
