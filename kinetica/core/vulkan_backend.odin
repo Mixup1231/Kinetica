@@ -165,13 +165,19 @@ vk_init :: proc(
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, raw_data(physical_devices)))		
 
 	best_rating: u64
+	best_queue_index_count: map[u32]u32
+	defer delete(best_queue_index_count)
 	for physical_device in physical_devices {
-		valid, rating, queue_indices := vk_physical_device_rate(physical_device, &device_attributes)
+		valid, rating, queue_indices, queue_index_count := vk_physical_device_rate(physical_device, &device_attributes)
 		if valid && rating > best_rating {
 			best_rating = rating
-			vk_context.device.physical      = physical_device
+			vk_context.device.physical = physical_device
 			vk_context.device.queue_indices = queue_indices
+			if len(best_queue_index_count) != 0 do delete(best_queue_index_count)
+			best_queue_index_count = queue_index_count
+			continue
 		}
+		delete(queue_index_count)
 	}
 	ensure(vk_context.device.physical != nil)
 
@@ -182,7 +188,13 @@ vk_init :: proc(
 	defer delete(unique_queue_indices)
 
 	// NOTE(Mitchell): We need to know the set of queue indices and the count of queues for each of those indices
-	for index, _ in vk_context.device.queue_indices do unique_queue_indices[index] = 1 if index not_in unique_queue_indices else unique_queue_indices[index]+1
+	for index, queue in vk_context.device.queue_indices {
+		if index not_in unique_queue_indices {
+			count := best_queue_index_count[vk_context.device.queue_indices[queue]]
+			log.info("Vulkan - Queue: family", index, "has", count, "queue(s)")
+			unique_queue_indices[index] = count 
+		}
+	}
 
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
 	defer delete(queue_create_infos)
@@ -225,7 +237,7 @@ vk_init :: proc(
 		stored_index^ -= 1
 	}
 
-	for queue, type in vk_context.device.queues do log.info("Vulkan - Queue: ", type, "retrieved with index", vk_context.device.queue_indices[type])
+	for queue, type in vk_context.device.queues do log.info("Vulkan - Queue:", type, "retrieved with index", vk_context.device.queue_indices[type])
 
 	vk.load_proc_addresses_device(vk_context.device.logical)
 	vk_context.device.initialised = true
@@ -275,9 +287,10 @@ vk_physical_device_rate :: proc(
 	device_attributes: ^VK_Device_Attributes,
 	allocator := context.allocator
 ) -> (
-	valid:         bool,
-	rating:        u64,
-	queue_indices: [VK_Queue_Type]u32,
+	valid:             bool,
+	rating:            u64,
+	queue_indices:     [VK_Queue_Type]u32,
+	queue_index_count: map[u32]u32
 ) {
 	context.allocator = allocator
 	ensure(device_attributes != nil)
@@ -287,7 +300,7 @@ vk_physical_device_rate :: proc(
 	device_extension_count: u32
 	device_extensions: []vk.ExtensionProperties
 	vk_warn(vk.EnumerateDeviceExtensionProperties(physical_device, nil, &device_extension_count, nil))
-	if device_extension_count == 0 do return false, 0, {}
+	if device_extension_count == 0 do return false, 0, {}, {}
 
 	device_extensions = make([]vk.ExtensionProperties, device_extension_count)
 	defer delete(device_extensions)
@@ -302,14 +315,14 @@ vk_physical_device_rate :: proc(
 				break
 			}
 		}
-		if !supports_requested_extension do return false, 0, {}
+		if !supports_requested_extension do return false, 0, {}, {}
 	}
 
 	// present modes
 	present_mode_count: u32
 	present_modes: []vk.PresentModeKHR
 	vk_warn(vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, vk_context.surface.handle, &present_mode_count, nil))
-	if present_mode_count == 0 do return false, 0, {}
+	if present_mode_count == 0 do return false, 0, {}, {}
 
 	present_modes = make([]vk.PresentModeKHR, present_mode_count)
 	defer delete(present_modes)
@@ -324,22 +337,21 @@ vk_physical_device_rate :: proc(
 				break
 			}
 		}
-		if !supports_present_mode do return false, 0, {}
+		if !supports_present_mode do return false, 0, {}, {}
 	}	
 	
 	// queues
 	queues_found := make(map[vk.QueueFlag]u32)
 	defer delete(queues_found)
 	
-	queue_index_count := make(map[u32]u32)
-	defer delete(queue_index_count)
+	queue_index_count = make(map[u32]u32)
 	
 	present_index: u32 = max(u32)	
 	
 	queue_family_count: u32
 	queue_families: []vk.QueueFamilyProperties
 	vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nil)
-	if queue_family_count == 0 do return false, 0, {}
+	if queue_family_count == 0 do return false, 0, {}, {}
 
 	queue_families = make([]vk.QueueFamilyProperties, queue_family_count)
 	defer delete(queue_families)
@@ -379,7 +391,6 @@ vk_physical_device_rate :: proc(
 	// fallback queue layout
 	if .GRAPHICS not_in queues_found {
 		log.info("Vulkan - Queue: Failed to find optimal graphics queue.")
-		
 		for family, i in queue_families {
 			if u32(i) in queue_index_count {
 				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
@@ -406,7 +417,6 @@ vk_physical_device_rate :: proc(
 
 	if present_index == max(u32) {
 		log.info("Vulkan - Queue: Failed to find optimal present queue.")
-		
 		for family, i in queue_families {			
 			if u32(i) in queue_index_count {
 				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
@@ -435,7 +445,6 @@ vk_physical_device_rate :: proc(
 
 	if .COMPUTE not_in queues_found {
 		log.info("Vulkan - Queue: Failed to find optimal compute queue.")
-		
 		for family, i in queue_families {
 			if u32(i) in queue_index_count {
 				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
@@ -461,7 +470,6 @@ vk_physical_device_rate :: proc(
 
 	if .TRANSFER not_in queues_found {
 		log.info("Vulkan - Queue: Failed to find optimal transfer queue.")
-		
 		for family, i in queue_families {
 			if u32(i) in queue_index_count {
 				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
@@ -487,7 +495,7 @@ vk_physical_device_rate :: proc(
 
 	// failed to find required queues
 	if .GRAPHICS not_in queues_found || .COMPUTE not_in queues_found || .TRANSFER not_in queues_found || present_index == max(u32) {
-		return false, 0, {}
+		return false, 0, {}, {}
 	}
 
 	queue_indices[.Graphics] = queues_found[.GRAPHICS]
@@ -514,7 +522,7 @@ vk_physical_device_rate :: proc(
 	if device_features.geometryShader do rating += 100
 	if device_features.tessellationShader do rating += 100
 
-	return true, rating, queue_indices
+	return true, rating, queue_indices, queue_index_count
 }
 
 // NOTE(Mitchell): Uses vk_context.device.physical and vk_context.surface.handle to retrieve information
