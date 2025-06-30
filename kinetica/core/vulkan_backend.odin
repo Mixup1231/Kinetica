@@ -165,52 +165,48 @@ vk_init :: proc(
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, raw_data(physical_devices)))		
 
 	best_rating: u64
-	best_queue_index_count: map[u32]u32
-	defer delete(best_queue_index_count)
+	best_queue_indices: [VK_Queue_Type][2]u32
 	for physical_device in physical_devices {
-		valid, rating, queue_indices, queue_index_count := vk_physical_device_rate(physical_device, &device_attributes)
+		valid, rating, queue_indices := vk_physical_device_rate(physical_device, &device_attributes)
 		if valid && rating > best_rating {
 			best_rating = rating
 			vk_context.device.physical = physical_device
-			vk_context.device.queue_indices = queue_indices
-			if len(best_queue_index_count) != 0 do delete(best_queue_index_count)
-			best_queue_index_count = queue_index_count
+			for index_count, queue in queue_indices do vk_context.device.queue_indices[queue] = index_count[0]
+			best_queue_indices = queue_indices
 			continue
 		}
-		delete(queue_index_count)
 	}
 	ensure(vk_context.device.physical != nil)
 
 	log.info("Vulkan: Successfully found physical device")
 
 	// logical device
+	largest_count: u32
 	unique_queue_indices := make(map[u32]u32)
 	defer delete(unique_queue_indices)
 
 	// NOTE(Mitchell): We need to know the set of queue indices and the count of queues for each of those indices
-	for index, queue in vk_context.device.queue_indices {
-		if index not_in unique_queue_indices {
-			count := best_queue_index_count[vk_context.device.queue_indices[queue]]
-			log.info("Vulkan - Queue: family", index, "has", count, "queue(s)")
-			unique_queue_indices[index] = count 
+	for index_count, queue in best_queue_indices {
+		if index_count[0] not_in unique_queue_indices {
+			unique_queue_indices[index_count[0]] = index_count[1]
+			if index_count[1] > largest_count do largest_count = index_count[1]
 		}
 	}
 
 	queue_create_infos := make([]vk.DeviceQueueCreateInfo, len(unique_queue_indices))
 	defer delete(queue_create_infos)
 
-	priorities := make([][]f32, len(unique_queue_indices))
+	priorities := make([]f32, largest_count)
+	for &priority in priorities do priority = 1
+	defer delete(priorities)
 
 	i := 0
 	for index, count in unique_queue_indices {
-		priorities[i] = make([]f32, count)
-		for &priority in priorities[i] do priority = 1
-		
 		queue_create_infos[i] = {
 			sType            = .DEVICE_QUEUE_CREATE_INFO,
 			queueFamilyIndex = index,
 			queueCount       = count,
-			pQueuePriorities = raw_data(priorities[i])
+			pQueuePriorities = raw_data(priorities)
 		}
 		i += 1
 	}
@@ -227,14 +223,11 @@ vk_init :: proc(
 	}
 	
 	vk_fatal(vk.CreateDevice(vk_context.device.physical, &device_create_info, nil, &vk_context.device.logical))
-	for &priority in priorities do delete(priority)
 	
-	for index, queue in vk_context.device.queue_indices {
-		ensure(index != max(u32))
-		
-		stored_index := &unique_queue_indices[index]
-		vk.GetDeviceQueue(vk_context.device.logical, index, stored_index^-1, &vk_context.device.queues[queue])
-		stored_index^ -= 1
+	for index_count, queue in best_queue_indices {
+		count := &unique_queue_indices[index_count[0]]
+		vk.GetDeviceQueue(vk_context.device.logical, index_count[0], count^-1, &vk_context.device.queues[queue])
+		if count^ > 1 do count^ -= 1
 	}
 
 	for queue, type in vk_context.device.queues do log.info("Vulkan - Queue:", type, "retrieved with index", vk_context.device.queue_indices[type])
@@ -289,8 +282,7 @@ vk_physical_device_rate :: proc(
 ) -> (
 	valid:             bool,
 	rating:            u64,
-	queue_indices:     [VK_Queue_Type]u32,
-	queue_index_count: map[u32]u32
+	queue_indices:     [VK_Queue_Type][2]u32,
 ) {
 	context.allocator = allocator
 	ensure(device_attributes != nil)
@@ -300,7 +292,7 @@ vk_physical_device_rate :: proc(
 	device_extension_count: u32
 	device_extensions: []vk.ExtensionProperties
 	vk_warn(vk.EnumerateDeviceExtensionProperties(physical_device, nil, &device_extension_count, nil))
-	if device_extension_count == 0 do return false, 0, {}, {}
+	if device_extension_count == 0 do return false, 0, {}
 
 	device_extensions = make([]vk.ExtensionProperties, device_extension_count)
 	defer delete(device_extensions)
@@ -315,14 +307,14 @@ vk_physical_device_rate :: proc(
 				break
 			}
 		}
-		if !supports_requested_extension do return false, 0, {}, {}
+		if !supports_requested_extension do return false, 0, {}
 	}
 
 	// present modes
 	present_mode_count: u32
 	present_modes: []vk.PresentModeKHR
 	vk_warn(vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, vk_context.surface.handle, &present_mode_count, nil))
-	if present_mode_count == 0 do return false, 0, {}, {}
+	if present_mode_count == 0 do return false, 0, {}
 
 	present_modes = make([]vk.PresentModeKHR, present_mode_count)
 	defer delete(present_modes)
@@ -337,170 +329,102 @@ vk_physical_device_rate :: proc(
 				break
 			}
 		}
-		if !supports_present_mode do return false, 0, {}, {}
+		if !supports_present_mode do return false, 0, {}
 	}	
 	
 	// queues
-	queues_found := make(map[vk.QueueFlag]u32)
-	defer delete(queues_found)
-	
-	queue_index_count = make(map[u32]u32)
-	
-	present_index: u32 = max(u32)	
+	present_index: [2]u32 = {max(u32), max(u32)}
+	queues_found := make(map[vk.QueueFlag][3]u32)
+	defer delete(queues_found)	
 	
 	queue_family_count: u32
 	queue_families: []vk.QueueFamilyProperties
 	vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nil)
-	if queue_family_count == 0 do return false, 0, {}, {}
-
+	if queue_family_count == 0 do return false, 0, {}
+	
 	queue_families = make([]vk.QueueFamilyProperties, queue_family_count)
 	defer delete(queue_families)
 
 	vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, raw_data(queue_families))
 
-	// desired queue layout
+	// find a graphics queue
 	for family, i in queue_families {
-		flags := family.queueFlags
-
 		can_present: b32
 		vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
+		
+		if .GRAPHICS in family.queueFlags && can_present {
+			queues_found[.GRAPHICS] = {u32(i), 1, family.queueCount}
+			present_index = {u32(i), 1}
+			break
+		} 
+	}
+	if .GRAPHICS not_in queues_found do return false, 0, {}
 
-		// exclusive present and graphics queue
-		if can_present && .GRAPHICS in flags && .GRAPHICS not_in queues_found && family.queueCount >= 2 {
-			queues_found[.GRAPHICS]   = u32(i)
-			present_index             = u32(i)
-			queue_index_count[u32(i)] = 2
-			continue
-		}
-
-		// dedicated compute queue
-		if .COMPUTE in flags && .GRAPHICS not_in flags && .COMPUTE not_in queues_found {
-			queues_found[.COMPUTE]    = u32(i)
-			queue_index_count[u32(i)] = 1
-			continue
-		}
-
-		// dedicated transfer queue
-		if .TRANSFER in flags && !(vk.QueueFlags({.GRAPHICS, .COMPUTE}) <= flags) && .TRANSFER not_in queues_found {
-			queues_found[.TRANSFER]   = u32(i)
-			queue_index_count[u32(i)] = 1
-			continue
+	// attempt to find dedicated transfer queue or a queue family that supports transfers and is not in use by graphics
+	for family, i in queue_families {
+		if .TRANSFER in family.queueFlags && .GRAPHICS not_in family.queueFlags && .COMPUTE not_in family.queueFlags {
+			queues_found[.TRANSFER] = {u32(i), 1, family.queueCount}
+			break
+		} else if .TRANSFER in family.queueFlags && queues_found[.GRAPHICS][0] != u32(i) {
+			queues_found[.TRANSFER] = {u32(i), 1, family.queueCount}
 		}
 	}
 
-	// fallback queue layout
-	if .GRAPHICS not_in queues_found {
-		log.info("Vulkan - Queue: Failed to find optimal graphics queue.")
-		for family, i in queue_families {
-			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
-			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
-			}
-			
-			if .GRAPHICS in family.queueFlags {
-				log.info("Vulkan - Queue: valid, adding to queues found.")
-				
-				queues_found[.GRAPHICS] = u32(i)
-				
-				if u32(i) not_in queue_index_count {
-					queue_index_count[u32(i)] = 1
-				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
-					queue_index_count[u32(i)] += 1
-				} else {
-					log.info("Vulkan - Queue: Have to share graphics queue")
-				}
-				break
-			}
-		}
-	}
-
-	if present_index == max(u32) {
-		log.info("Vulkan - Queue: Failed to find optimal present queue.")
-		for family, i in queue_families {			
-			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
-			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
-			}
-			
-			can_present: b32
-			vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
-
-			if can_present {
-				log.info("Vulkan - Queue: valid, adding to queues found.")
-				
-				present_index = u32(i)
-				if u32(i) not_in queue_index_count {
-					queue_index_count[u32(i)] = 1
-				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
-					queue_index_count[u32(i)] += 1
-				} else {
-					log.info("Vulkan - Queue: Have to share present queue")
-				}
-				break
-			}
-		}
-	}
-
-	if .COMPUTE not_in queues_found {
-		log.info("Vulkan - Queue: Failed to find optimal compute queue.")
-		for family, i in queue_families {
-			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
-			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
-			}
-			
-			if .COMPUTE in family.queueFlags {
-				log.info("Vulkan - Queue: valid, adding to queues found.")
-				
-				queues_found[.COMPUTE] = u32(i)
-				if u32(i) not_in queue_index_count {
-					queue_index_count[u32(i)] = 1
-				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
-					queue_index_count[u32(i)] += 1
-				} else {
-					log.info("Vulkan - Queue: Have to share compute queue")
-				}
-				break
-			}
-		}
-	}
-
+	// only family left to check is what the graphics queue is using
 	if .TRANSFER not_in queues_found {
-		log.info("Vulkan - Queue: Failed to find optimal transfer queue.")
-		for family, i in queue_families {
-			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
+		family_info := &queues_found[.GRAPHICS]
+		
+		if .TRANSFER in queue_families[family_info[0]].queueFlags {
+			// if family supports more than one queue, increment queue count
+			if family_info[1] < family_info[2] do family_info[1] += 1
+			queues_found[.TRANSFER] = family_info^
+		} else {
+			return false, 0, {}
+		}
+	}
+
+	// attempt to find dedicated compute queue or queue family that is not in use by transfer
+	decrement_graphics_queue_count: bool
+	for family, i in queue_families {
+		if .COMPUTE in family.queueFlags && .GRAPHICS not_in family.queueFlags && .TRANSFER not_in family.queueFlags {
+			queues_found[.COMPUTE] = {u32(i), 1, family.queueCount}
+			break
+		} else if .COMPUTE in family.queueFlags && queues_found[.TRANSFER][0] != u32(i) {
+			graphics_family_info := &queues_found[.GRAPHICS]
+
+			// if graphics is using this family
+			if graphics_family_info[0] == u32(i) {
+				// try to create separate compute queue in family
+				if graphics_family_info[2] > 1 do graphics_family_info[1] += 1
+				queues_found[.COMPUTE] = graphics_family_info^
+				decrement_graphics_queue_count = true
 			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
-			}
-			
-			if .TRANSFER in family.queueFlags {
-				log.info("Vulkan - Queue: valid, adding to queues found.")
-				
-				queues_found[.TRANSFER] = u32(i)
-				if u32(i) not_in queue_index_count {
-					queue_index_count[u32(i)] = 1
-				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
-					queue_index_count[u32(i)] += 1
-				} else {
-					log.info("Vulkan - Queue: Have to share transfer queue")
+				if decrement_graphics_queue_count {
+					graphics_family_info[1] -= 1
+					decrement_graphics_queue_count = false
 				}
-				break
+				queues_found[.COMPUTE] = {u32(i), 1, family.queueCount}
 			}
 		}
 	}
 
-	// failed to find required queues
-	if .GRAPHICS not_in queues_found || .COMPUTE not_in queues_found || .TRANSFER not_in queues_found || present_index == max(u32) {
-		return false, 0, {}, {}
+	// only family left to check is what the trasnfer queue is using
+	if .COMPUTE not_in queues_found {
+		family_info := &queues_found[.TRANSFER]
+
+		if .COMPUTE in queue_families[family_info[0]].queueFlags {
+			// try to create separate compute queue in family
+			if family_info[1] < family_info[2] do family_info[1] += 1
+			queues_found[.COMPUTE] = family_info^
+		} else {
+			return false, 0, {}
+		}
 	}
 
-	queue_indices[.Graphics] = queues_found[.GRAPHICS]
-	queue_indices[.Compute]  = queues_found[.COMPUTE]
-	queue_indices[.Transfer] = queues_found[.TRANSFER]
+	queue_indices[.Graphics] = queues_found[.GRAPHICS].xy
+	queue_indices[.Compute]  = queues_found[.COMPUTE].xy
+	queue_indices[.Transfer] = queues_found[.TRANSFER].xy
+	queue_indices[.Present]  = present_index
 
 	// rating
 	device_properties: vk.PhysicalDeviceProperties
@@ -522,7 +446,7 @@ vk_physical_device_rate :: proc(
 	if device_features.geometryShader do rating += 100
 	if device_features.tessellationShader do rating += 100
 
-	return true, rating, queue_indices, queue_index_count
+	return true, rating, queue_indices
 }
 
 // NOTE(Mitchell): Uses vk_context.device.physical and vk_context.surface.handle to retrieve information
