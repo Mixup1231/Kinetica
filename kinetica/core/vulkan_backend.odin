@@ -377,16 +377,23 @@ vk_physical_device_rate :: proc(
 		
 		for family, i in queue_families {
 			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
 			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
 			}
 			
-			if .GRAPHICS in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
+			if .GRAPHICS in family.queueFlags {
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				queues_found[.GRAPHICS] = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
+				
+				if u32(i) not_in queue_index_count {
+					queue_index_count[u32(i)] = 1
+				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
+					queue_index_count[u32(i)] += 1
+				} else {
+					log.info("Vulkan - Queue: Have to share graphics queue")
+				}
 				break
 			}
 		}
@@ -397,9 +404,9 @@ vk_physical_device_rate :: proc(
 		
 		for family, i in queue_families {			
 			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
 			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
 			}
 			
 			can_present: b32
@@ -409,7 +416,13 @@ vk_physical_device_rate :: proc(
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				present_index = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
+				if u32(i) not_in queue_index_count {
+					queue_index_count[u32(i)] = 1
+				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
+					queue_index_count[u32(i)] += 1
+				} else {
+					log.info("Vulkan - Queue: Have to share present queue")
+				}
 				break
 			}
 		}
@@ -420,16 +433,22 @@ vk_physical_device_rate :: proc(
 		
 		for family, i in queue_families {
 			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
 			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
 			}
 			
 			if .COMPUTE in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				queues_found[.COMPUTE] = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
+				if u32(i) not_in queue_index_count {
+					queue_index_count[u32(i)] = 1
+				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
+					queue_index_count[u32(i)] += 1
+				} else {
+					log.info("Vulkan - Queue: Have to share compute queue")
+				}
 				break
 			}
 		}
@@ -440,16 +459,22 @@ vk_physical_device_rate :: proc(
 		
 		for family, i in queue_families {
 			if u32(i) in queue_index_count {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount - queue_index_count[u32(i)], "more separate queues")
 			} else {
-				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more queues")
+				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
 			}
 			
 			if .TRANSFER in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				queues_found[.TRANSFER] = u32(i)
-				queue_index_count[u32(i)] = 1 if u32(i) not_in queue_index_count else queue_index_count[u32(i)]+1
+				if u32(i) not_in queue_index_count {
+					queue_index_count[u32(i)] = 1
+				} else if queue_index_count[u32(i)]+1 <= family.queueCount {
+					queue_index_count[u32(i)] += 1
+				} else {
+					log.info("Vulkan - Queue: Have to share transfer queue")
+				}
 				break
 			}
 		}
