@@ -417,7 +417,7 @@ vk_physical_device_rate :: proc(
 			can_present: b32
 			vk_warn(vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, u32(i), vk_context.surface.handle, &can_present))
 
-			if can_present && queue_index_count[u32(i)]+1 <= family.queueCount {
+			if can_present {
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				present_index = u32(i)
@@ -443,7 +443,7 @@ vk_physical_device_rate :: proc(
 				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
 			}
 			
-			if .COMPUTE in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
+			if .COMPUTE in family.queueFlags {
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				queues_found[.COMPUTE] = u32(i)
@@ -469,7 +469,7 @@ vk_physical_device_rate :: proc(
 				log.info("Vulkan - Queue:", i, "Supports", family.queueFlags, "and supports upto", family.queueCount, "more separate queues")
 			}
 			
-			if .TRANSFER in family.queueFlags && queue_index_count[u32(i)]+1 <= family.queueCount {
+			if .TRANSFER in family.queueFlags {
 				log.info("Vulkan - Queue: valid, adding to queues found.")
 				
 				queues_found[.TRANSFER] = u32(i)
