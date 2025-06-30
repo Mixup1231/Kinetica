@@ -195,12 +195,12 @@ main :: proc() {
 		core.vk_submit_to_queue(
 			.Graphics,
 			command_buffers[frame],
-			signal_rendered[frame],
+			signal_rendered[image_index],
 			wait_available[frame],
 			{.COLOR_ATTACHMENT_OUTPUT},
 			in_flight[frame]
 		)
 
-		core.vk_present(signal_rendered[frame], image_index)
+		core.vk_present(signal_rendered[image_index], image_index)
 	}
 }
