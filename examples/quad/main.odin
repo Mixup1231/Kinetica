@@ -120,12 +120,10 @@ application_run :: proc() {
 	frame, index: u32
 	for !core.window_should_close() {
 		core.window_poll()		
-		
-		if vertex_buffer.vk_allocator.deallocate == nil do ensure(false)
-		
+	
 		frame = (frame + 1) % frames_in_flight
 		index = core.vk_swapchain_get_next_image_index(image_available[frame], block_until[frame])		
-
+	
 		core.vk_command_buffer_reset(command_buffers[frame])
 		core.vk_command_buffer_begin(command_buffers[frame])
 				
@@ -202,9 +200,7 @@ application_run :: proc() {
 		)
 
 		core.vk_present(render_finished[index], index)
-	}
-	
-	if vertex_buffer.vk_allocator.deallocate == nil do ensure(false)
+	}	
 	
 	core.vk_command_buffer_destroy(graphics_pool, command_buffers)
 	core.vk_command_pool_destroy(graphics_pool)
