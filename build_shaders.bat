@@ -1,4 +1,4 @@
 @echo off
 if not exist "shaders" mkdir shaders
-glslang -V examples/testing/test.frag -o shaders/test.frag.spv
-glslang -V examples/testing/test.vert -o shaders/test.vert.spv
+glslang -V examples/quad/quad.frag -o shaders/quad.frag.spv
+glslang -V examples/quad/quad.vert -o shaders/quad.vert.spv

@@ -274,7 +274,7 @@ vk_multisample_state_create :: proc(
 	return multisample_state
 }
 
-vk_color_attachment_state_create :: proc(
+vk_color_blend_attachment_state_create :: proc(
 	blend_enable:           b32                    = false,
 	src_color_blend_factor: vk.BlendFactor         = vk.BlendFactor.SRC_ALPHA,
 	dst_color_blend_factor: vk.BlendFactor         = vk.BlendFactor.ONE_MINUS_SRC_ALPHA,
@@ -301,9 +301,9 @@ vk_color_attachment_state_create :: proc(
 }
 
 vk_color_blend_state_create :: proc(
+	attachments:     []vk.PipelineColorBlendAttachmentState = {},
 	logic_op_enable: b32                                    = false,
 	logic_op:        vk.LogicOp                             = .COPY,
-	attachments:     []vk.PipelineColorBlendAttachmentState = {},
 	blend_constants: [4]f32                                 = {0, 0, 0, 0}
 ) -> (
 	color_blend_state: vk.PipelineColorBlendStateCreateInfo
@@ -343,7 +343,7 @@ vk_dynamic_state_create :: proc(
 	return dynamic_state
 }
 
-vk_get_swapchain_color_format :: proc() -> (
+vk_swapchain_get_color_format :: proc() -> (
 	format: vk.Format
 ) {
 	ensure(vk_context.initialised)
@@ -353,10 +353,10 @@ vk_get_swapchain_color_format :: proc() -> (
 }
 
 vk_rendering_info_create :: proc(
-	view_mask:                 u32         = 0,
 	color_attachment_formats:  []vk.Format = {},
 	depth_attachment_format:   vk.Format   = vk.Format.UNDEFINED,
-	stencil_attachment_format: vk.Format   = vk.Format.UNDEFINED
+	stencil_attachment_format: vk.Format   = vk.Format.UNDEFINED,
+	view_mask:                 u32         = 0,
 ) -> (
 	rendering_info: vk.PipelineRenderingCreateInfo
 ) {
@@ -920,6 +920,17 @@ vk_command_draw :: #force_inline proc(
 	vk.CmdDraw(command_buffer, vertex_count, instance_count, first_vertex, first_instance)
 }
 
+vk_command_draw_indexed :: #force_inline proc(
+	command_buffer: vk.CommandBuffer,
+	index_count:    u32,
+	instance_count: u32 = 1,
+	first_index:    u32 = 0,
+	vertex_offset:  i32 = 0,
+	first_instance: u32 = 0
+) {
+	vk.CmdDrawIndexed(command_buffer, index_count, instance_count, first_index, vertex_offset, first_instance)
+}
+
 vk_command_end_rendering :: #force_inline proc(
 	command_buffer: vk.CommandBuffer
 ) {
@@ -1080,7 +1091,7 @@ vk_buffer_destroy :: proc(
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(buffer != nil)
-
+	
 	buffer.vk_allocator->deallocate(&buffer.allocation)
 	vk.DestroyBuffer(vk_context.device.logical, buffer.handle, nil)
 }
