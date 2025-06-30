@@ -1,3 +1,4 @@
+#+private
 package core
 
 import "core:os"
@@ -12,7 +13,7 @@ import vk "vendor:vulkan"
 // Vulkan debug logging (callback)
 // Caching valid physical devices 
 
-Instance :: struct {
+VK_Instance :: struct {
 	handle:     vk.Instance,
 	extensions: []cstring,
 	layers:     []cstring,
@@ -21,26 +22,26 @@ Instance :: struct {
 	initialised: bool,
 }
 
-Surface :: struct {
+VK_Surface :: struct {
 	handle: vk.SurfaceKHR
 }
 
-Device_Attributes :: struct {
+VK_Device_Attributes :: struct {
 	extensions:    []cstring,
 	features:      rawptr,
 	present_modes: []vk.PresentModeKHR,
 }
 
-Device :: struct {
+VK_Device :: struct {
 	logical:       vk.Device,
 	physical:      vk.PhysicalDevice,
-	queue_indices: [Queue_Type]u32,
-	queues:        [Queue_Type]vk.Queue,
+	queue_indices: [VK_Queue_Type]u32,
+	queues:        [VK_Queue_Type]vk.Queue,
 
 	initialised: bool,
 }
 
-Swapchain_Attributes :: struct {
+VK_Swapchain_Attributes :: struct {
 	format:       vk.SurfaceFormatKHR,
 	present_mode: vk.PresentModeKHR,
 	extent:       vk.Extent2D,
@@ -48,7 +49,7 @@ Swapchain_Attributes :: struct {
 	image_count:  u32
 }
 
-Swapchain_Support_Details :: struct {
+VK_Swapchain_Support_Details :: struct {
 	capabilities:  vk.SurfaceCapabilitiesKHR,
 	formats:       []vk.SurfaceFormatKHR,
 	present_modes: []vk.PresentModeKHR,
@@ -56,17 +57,17 @@ Swapchain_Support_Details :: struct {
 	initialised: bool,
 }
 
-Swapchain :: struct {
+VK_Swapchain :: struct {
 	handle:          vk.SwapchainKHR,
 	images:          []vk.Image,
 	image_views:     []vk.ImageView,
-	attributes:      Swapchain_Attributes,
-	support_details: Swapchain_Support_Details,
+	attributes:      VK_Swapchain_Attributes,
+	support_details: VK_Swapchain_Support_Details,
 
 	initialised: bool,
 }
 
-Application_Info :: struct {
+VK_Application_Info :: struct {
 	api_version: u32,
 	app_name:    cstring,
 	app_version: u32,
@@ -76,19 +77,19 @@ Application_Info :: struct {
 }
 
 VK_Context :: struct {
-	instance:  Instance,
-	surface:   Surface,
-	device:    Device,
-	swapchain: Swapchain,
+	instance:  VK_Instance,
+	surface:   VK_Surface,
+	device:    VK_Device,
+	swapchain: VK_Swapchain,
 
 	initialised: bool,
 }
 vk_context: VK_Context
 
-vulkan_init :: proc(
-	app_info:             Application_Info,
-	device_attributes:    Device_Attributes,
-	swapchain_attributes: Swapchain_Attributes,
+vk_init :: proc(
+	app_info:             VK_Application_Info,
+	device_attributes:    VK_Device_Attributes,
+	swapchain_attributes: VK_Swapchain_Attributes,
 	allocator := context.allocator
 ) {	
 	context.allocator = allocator
@@ -165,7 +166,7 @@ vulkan_init :: proc(
 
 	best_rating: u64
 	for physical_device in physical_devices {
-		valid, rating, queue_indices := vulkan_physical_device_rate(physical_device, &device_attributes)
+		valid, rating, queue_indices := vk_physical_device_rate(physical_device, &device_attributes)
 		if valid && rating > best_rating {
 			best_rating = rating
 			vk_context.device.physical      = physical_device
@@ -230,12 +231,12 @@ vulkan_init :: proc(
 	log.info("Vulkan: Successfully created logical device")
 
 	// swapchain
-	vulkan_swapchain_create(&swapchain_attributes)
+	vk_swapchain_create(&swapchain_attributes)
 	
 	vk_context.initialised = true
 }
 
-vulkan_destroy :: proc() {
+vk_destroy :: proc() {
 	ensure(vk_context.initialised)
 	ensure(vk_context.instance.initialised)
 	ensure(vk_context.device.initialised)
@@ -267,14 +268,14 @@ vulkan_destroy :: proc() {
 	vk.DestroyInstance(vk_context.instance.handle, nil)
 }
 
-vulkan_physical_device_rate :: proc(
+vk_physical_device_rate :: proc(
 	physical_device:   vk.PhysicalDevice,
-	device_attributes: ^Device_Attributes,
+	device_attributes: ^VK_Device_Attributes,
 	allocator := context.allocator
 ) -> (
 	valid:         bool,
 	rating:        u64,
-	queue_indices: [Queue_Type]u32,
+	queue_indices: [VK_Queue_Type]u32,
 ) {
 	context.allocator = allocator
 	ensure(device_attributes != nil)
@@ -450,10 +451,10 @@ vulkan_physical_device_rate :: proc(
 }
 
 // NOTE(Mitchell): Uses vk_context.device.physical and vk_context.surface.handle to retrieve information
-vulkan_swapchain_query_support :: proc(
+vk_swapchain_query_support :: proc(
 	allocator := context.allocator
 ) -> (
-	support_details: Swapchain_Support_Details
+	support_details: VK_Swapchain_Support_Details
 ) {
 	context.allocator = allocator
 
@@ -479,8 +480,8 @@ vulkan_swapchain_query_support :: proc(
 }
 
 // NOTE(Mitchell): This is a separate function because you need to recreate the swapchain on resize
-vulkan_swapchain_create :: proc(
-	swapchain_attributes: ^Swapchain_Attributes,
+vk_swapchain_create :: proc(
+	swapchain_attributes: ^VK_Swapchain_Attributes,
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
@@ -501,7 +502,7 @@ vulkan_swapchain_create :: proc(
 		delete(support_details.present_modes)
 	}
 	
-	support_details^ = vulkan_swapchain_query_support()
+	support_details^ = vk_swapchain_query_support()
 
 	if support_details.capabilities.currentExtent.width != max(u32) {
 		swapchain_create_info.imageExtent = support_details.capabilities.currentExtent
@@ -612,7 +613,7 @@ vulkan_swapchain_create :: proc(
 	vk_context.swapchain.initialised = true
 }
 
-vulkan_swapchain_destroy :: proc() {
+vk_swapchain_destroy :: proc() {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
@@ -621,7 +622,7 @@ vulkan_swapchain_destroy :: proc() {
 	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
 }
 
-vulkan_swapchain_recreate :: proc(
+vk_swapchain_recreate :: proc(
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
@@ -640,8 +641,27 @@ vulkan_swapchain_recreate :: proc(
 	attributes.extent.height = u32(height)
 	
 	vk.DeviceWaitIdle(vk_context.device.logical)
-	vulkan_swapchain_destroy()
-	vulkan_swapchain_create(&attributes)
+	vk_swapchain_destroy()
+	vk_swapchain_create(&attributes)
+}
+
+vk_memory_type_find_index :: proc(
+	physical_device: vk.PhysicalDevice,
+	property_flags:  vk.MemoryPropertyFlags,
+	type_filter:     u32
+) -> (
+	memory_type_index: Maybe(u32)
+) {
+	ensure(physical_device != nil)
+	
+	memory_properties: vk.PhysicalDeviceMemoryProperties
+	vk.GetPhysicalDeviceMemoryProperties(physical_device, &memory_properties)
+
+	for type, i in memory_properties.memoryTypes {
+		if bool(type_filter & (1 << u32(i))) && property_flags <= type.propertyFlags do return u32(i)
+	}
+
+	return nil
 }
 
 vk_fatal :: #force_inline proc(result: vk.Result, msg: cstring = "", location := #caller_location) {

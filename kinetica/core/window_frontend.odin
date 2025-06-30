@@ -31,7 +31,7 @@ window_create :: proc(
 
 	input_init()
 	
-	app_info: Application_Info = {
+	app_info: VK_Application_Info = {
 		api_version = vk.API_VERSION_1_3,
 		app_name    = app_name,
 		app_version = app_version,
@@ -45,7 +45,7 @@ window_create :: proc(
 		dynamicRendering = true,
 	}
 
-	device_attribtes: Device_Attributes = {
+	device_attribtes: VK_Device_Attributes = {
 		features      = &dynamic_rendering_feature,
 		present_modes = { .FIFO },
 		extensions    = {
@@ -53,7 +53,7 @@ window_create :: proc(
 		}
 	}
 
-	swapchain_attributes: Swapchain_Attributes = {
+	swapchain_attributes: VK_Swapchain_Attributes = {
 		present_mode = .FIFO,
 		extent = {
 			width  = u32(width),
@@ -69,14 +69,14 @@ window_create :: proc(
 		}
 	}
 
-	vulkan_init(app_info, device_attribtes, swapchain_attributes)
+	vk_init(app_info, device_attribtes, swapchain_attributes)
 }
 
 window_destroy :: proc() {
 	ensure(glfw_context.initialised)
 
 	input_destroy()
-	vulkan_destroy()
+	vk_destroy()
 	glfw.DestroyWindow(glfw_context.handle)
 	glfw.Terminate()
 }
