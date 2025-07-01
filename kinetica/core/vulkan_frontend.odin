@@ -734,6 +734,7 @@ vk_depth_image_create :: proc(
 	extent:       vk.Extent3D,
 	usage:        vk.ImageUsageFlags,
 	vk_allocator: ^VK_Allocator,
+	aspect_mask:  vk.ImageAspectFlags  = {.DEPTH},
 	samples:      vk.SampleCountFlags = {._1},
 	image_type:   vk.ImageType        = .D2,
 	view_type:    vk.ImageViewType    = .D2,
@@ -748,13 +749,14 @@ vk_depth_image_create :: proc(
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	ensure(vk_allocator != nil)
+	ensure(.DEPTH in aspect_mask)
 	
 	return vk_image_create(
 		format,
 		tiling,
 		extent,
 		usage,
-		{.DEPTH},
+		aspect_mask,
 		vk_allocator,
 		samples,
 		image_type,
