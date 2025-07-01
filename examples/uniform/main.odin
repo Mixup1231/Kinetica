@@ -46,7 +46,7 @@ application: Application
 application_create :: proc() {	
 	using application
 	
-	core.window_create(800, 600, "Quad example")
+	core.window_create(800, 600, "Uniform example")
 	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
@@ -215,19 +215,13 @@ application_run :: proc() {
 		)
 		
 		core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
-
 		core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
-		
 		core.vk_descriptor_set_update_uniform_buffer(descriptor_sets[frame], 0, &uniform_buffer)
-		
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {vertex_buffer.handle})
-		
 		core.vk_command_index_buffer_bind(command_buffers[frame], index_buffer.handle, .UINT16)
-		
 		core.vk_command_draw_indexed(command_buffers[frame], 6)
-		
 		core.vk_command_end_rendering(command_buffers[frame])
-
+		
 		core.vk_command_image_barrier(
 			command_buffer  = command_buffers[frame],
 			image           = core.vk_swapchain_get_image(index),
