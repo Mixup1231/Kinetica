@@ -51,8 +51,9 @@ VK_Allocator :: struct {
 
 VK_Buffer :: struct {
 	handle:       vk.Buffer,
-	vk_allocator: ^VK_Allocator,
+	size:         vk.DeviceSize,
 	allocation:   VK_Allocation,
+	vk_allocator: ^VK_Allocator,
 }
 
 vk_allocate_default :: proc(
@@ -137,6 +138,26 @@ vk_shader_module_destroy :: proc(
 	vk.DestroyShaderModule(vk_context.device.logical, shader_module, nil)
 }
 
+// vk_descriptor_pool_create :: proc(
+// 	descriptor_types:  []vk.DescriptorType,
+// 	descriptor_counts: []u32,
+// 	max_sets:          u32,
+// 	allocator := context.allocator
+// ) -> (
+// 	descriptor_pool: vk.DescriptorPool
+// ) {
+// 	context.allocator = allocator
+// 	ensure(vk_context.initialised)
+// 	ensure(vk_context.device.initialised)
+
+// 	type_count := len()
+// 	ensure(len(descriptor_types) == len(descriptor_counts))
+
+// 	pool_sizes := make([]vk.DescriptorPoolSize, len(descriptor_types))
+
+// 	return descriptor_pool
+// }
+
 vk_descriptor_set_layout_create :: proc(
 	bindings: []vk.DescriptorSetLayoutBinding,
 	flags:    vk.DescriptorSetLayoutCreateFlags = {}
@@ -155,6 +176,15 @@ vk_descriptor_set_layout_create :: proc(
 	vk_warn(vk.CreateDescriptorSetLayout(vk_context.device.logical, &descriptor_set_layout_create_info, nil, &descriptor_set_layout))
 
 	return descriptor_set_layout
+}
+
+vk_descriptor_set_layout_destroy :: proc(
+	descriptor_layout: vk.DescriptorSetLayout
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk.DestroyDescriptorSetLayout(vk_context.device.logical, descriptor_layout, nil)
 }
 
 vk_shader_stage_state_create :: proc(
@@ -1044,6 +1074,8 @@ vk_buffer_create :: proc(
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
+	buffer.size = size
+
 	i: u32
 	queue_indices: [len(VK_Queue_Type)]u32
 	for queue in queues {
@@ -1084,7 +1116,7 @@ vk_buffer_create :: proc(
 
 	allocate_info.memory_info.memoryTypeIndex = type_index.(u32)
 	buffer.vk_allocator = vk_allocator
-	buffer.allocation = vk_allocator->allocate(&allocate_info)
+	buffer.allocation   = vk_allocator->allocate(&allocate_info)
 	vk_warn(vk.BindBufferMemory(vk_context.device.logical, buffer.handle, buffer.allocation.handle, buffer.allocation.offset))
 
 	return buffer
@@ -1235,7 +1267,7 @@ vk_buffer_copy_staged :: proc(
 	ensure(buffer_data != nil)
 	
 	staging_buffer := vk_buffer_create(
-		buffer.allocation.size,
+		buffer.size,
 		{.TRANSFER_SRC},
 		.Toggle,
 		vk_allocator,
@@ -1246,13 +1278,13 @@ vk_buffer_copy_staged :: proc(
 	vk.MapMemory(vk_context.device.logical,
 		staging_buffer.allocation.handle,
 		staging_buffer.allocation.offset,
-		staging_buffer.allocation.size,
+		staging_buffer.size,
 		{},
 		&data
 	)
-	mem.copy(data, buffer_data, int(staging_buffer.allocation.size))
+	mem.copy(data, buffer_data, int(staging_buffer.size))
 	vk.UnmapMemory(vk_context.device.logical, staging_buffer.allocation.handle)
 
-	vk_buffer_copy(command_pool, &staging_buffer, buffer, buffer.allocation.size)
+	vk_buffer_copy(command_pool, &staging_buffer, buffer, buffer.size)
 	vk_buffer_destroy(&staging_buffer)
 }
