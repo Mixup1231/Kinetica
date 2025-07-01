@@ -60,8 +60,8 @@ VK_Image :: struct {
 	handle:       vk.Image,
 	view:         vk.ImageView,
 	format:       vk.Format,
-	vk_allocator: ^VK_Allocator,
 	allocation:   VK_Allocation,
+	vk_allocator: ^VK_Allocator,
 }
 
 vk_allocate_default :: proc(
@@ -506,6 +506,38 @@ vk_color_blend_state_create :: proc(
 	return color_blend_state
 }
 
+// NOTE(Mitchell): Review reverse depth buffering
+vk_depth_stencil_state_create :: proc(
+	depth_test_enable:        b32                                     = true,
+	depth_write_enable:       b32                                     = true,
+	depth_compare_op:         vk.CompareOp                            = .LESS,
+	flags:                    vk.PipelineDepthStencilStateCreateFlags = {},
+	stencil_test_enable:      b32                                     = false,
+	front:                    vk.StencilOpState                       = {},
+	back:                     vk.StencilOpState                       = {},
+	depth_bounds_test_enable: b32                                     = false,
+	min_depth_bounds:         f32                                     = 0,
+	max_depth_bounds:         f32                                     = 1,
+) -> (
+	depth_stencil_state: vk.PipelineDepthStencilStateCreateInfo
+) {
+	depth_stencil_state = {
+		sType = .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+		flags                 = flags,
+		depthTestEnable       = depth_test_enable,
+		depthWriteEnable      = depth_write_enable,
+		depthCompareOp        = depth_compare_op,
+		depthBoundsTestEnable = depth_bounds_test_enable,
+		stencilTestEnable     = stencil_test_enable,
+		front                 = front,
+		back                  = back,
+		minDepthBounds        = min_depth_bounds,
+		maxDepthBounds        = max_depth_bounds,
+	}
+
+	return depth_stencil_state
+}
+
 // NOTE(Mitchell): Needs to contain viewport and scissor
 vk_dynamic_state_create :: proc(
 	dynamic_states: []vk.DynamicState = {.VIEWPORT, .SCISSOR}
@@ -762,6 +794,7 @@ vk_graphics_pipeline_create :: proc (
 	viewport_state:       ^vk.PipelineViewportStateCreateInfo      = nil,
 	rasterizer_state:     ^vk.PipelineRasterizationStateCreateInfo = nil,
 	multisample_state:    ^vk.PipelineMultisampleStateCreateInfo   = nil,
+	depth_stencil_state:  ^vk.PipelineDepthStencilStateCreateInfo  = nil,
 	color_blend_state:    ^vk.PipelineColorBlendStateCreateInfo    = nil,
 	dynamic_state:        ^vk.PipelineDynamicStateCreateInfo       = nil,
 	shader_stages:        []vk.PipelineShaderStageCreateInfo       = {},
@@ -795,6 +828,7 @@ vk_graphics_pipeline_create :: proc (
 		pViewportState      = viewport_state,
 		pRasterizationState = rasterizer_state,
 		pMultisampleState   = multisample_state,
+		pDepthStencilState  = depth_stencil_state,
 		pColorBlendState    = color_blend_state,
 		pDynamicState       = dynamic_state,
 	}
@@ -1321,10 +1355,13 @@ vk_command_end_rendering :: #force_inline proc(
 }
 
 vk_color_attachment_create :: proc(
-	image_view:  vk.ImageView,
-	load_op:     vk.AttachmentLoadOp  = .CLEAR,
-	store_op:    vk.AttachmentStoreOp = .STORE,
-	clear_color: [4]f32               = {0, 0, 0, 0},
+	image_view:           vk.ImageView,
+	load_op:              vk.AttachmentLoadOp  = .CLEAR,
+	store_op:             vk.AttachmentStoreOp = .STORE,
+	clear_color:          [4]f32               = {0, 0, 0, 0},
+	resolve_mode:         vk.ResolveModeFlags  = {},
+	resolve_image_view:   vk.ImageView         = 0,
+	resolve_image_layout: vk.ImageLayout       = .UNDEFINED,
 ) -> (
 	color_attachment: vk.RenderingAttachmentInfo
 ) {
@@ -1341,6 +1378,36 @@ vk_color_attachment_create :: proc(
 	}
 
 	return color_attachment
+}
+
+vk_depth_attachment_create :: proc(
+	image_view:           vk.ImageView,
+	image_layout:         vk.ImageLayout            = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+	load_op:              vk.AttachmentLoadOp       = .CLEAR,
+	store_op:             vk.AttachmentStoreOp      = .STORE,
+	depth_stencil_value:  vk.ClearDepthStencilValue = {1, 0},
+	resolve_mode:         vk.ResolveModeFlags       = {},
+	resolve_image_view:   vk.ImageView              = 0,
+	resolve_image_layout: vk.ImageLayout            = .UNDEFINED,
+) -> (
+	depth_attachment: vk.RenderingAttachmentInfo
+) {
+	clear_value: vk.ClearValue
+	clear_value.depthStencil = depth_stencil_value
+	
+	depth_attachment = {
+		sType              = .RENDERING_ATTACHMENT_INFO,
+		imageView          = image_view,
+		imageLayout        = image_layout,
+		resolveMode        = resolve_mode,
+		resolveImageView   = resolve_image_view,
+		resolveImageLayout = resolve_image_layout,
+		loadOp             = load_op,
+		storeOp            = store_op,
+		clearValue         = clear_value,
+	}
+
+	return depth_attachment
 }
 
 vk_command_begin_rendering :: proc(
@@ -1365,6 +1432,7 @@ vk_command_begin_rendering :: proc(
 	vk.CmdBeginRendering(command_buffer, &rendering_info)
 }
 
+// NOTE(Mitchell): We don't support sparse binding so locations must be contiguous
 vk_vertex_description_create :: proc(
 	$Vertex:          typeid,
 	binding:          u32    = 0,
@@ -1517,6 +1585,7 @@ vk_uniform_buffer_create :: proc(
 	return uniform_buffer
 }
 
+// NOTE(Mitchell): We may want to have {.DEVICE_LOCAL} be configurable i.e. {.HOST_VISIBLE, .HOST_COHERENT}
 vk_vertex_buffer_create :: proc(
 	size:         vk.DeviceSize,
 	vk_allocator: ^VK_Allocator,

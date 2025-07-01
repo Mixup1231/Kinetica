@@ -134,6 +134,7 @@ application_create :: proc() {
 		&viewport_state,
 		&rasterizer_state,
 		&multisample_state,
+		nil,
 		&color_blend_state,
 		&dynamic_state,
 		{
@@ -163,9 +164,8 @@ application_run :: proc() {
 		if rotation >= glsl.PI * 2 do rotation = 0
 		
 		ubo.model = glsl.mat4Rotate({0, 0, 1}, rotation)
-		ubo.view = glsl.mat4LookAt({2, 2, -2}, {0, 0, 0}, {0, 1, 0})
+		ubo.view = glsl.mat4LookAt({2, 2, 2}, {0, 0, 0}, {0, 1, 0})
 		ubo.proj = glsl.mat4Perspective(glsl.radians_f32(45), f32(extent.width) / f32(extent.height), 0.1, 10)
-		ubo.proj[1][1] *= -1
 				
 		core.vk_buffer_copy(&uniform_buffer, &ubo)
 	

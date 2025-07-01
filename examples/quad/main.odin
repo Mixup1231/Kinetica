@@ -105,6 +105,7 @@ application_create :: proc() {
 		&viewport_state,
 		&rasterizer_state,
 		&multisample_state,
+		nil,
 		&color_blend_state,
 		&dynamic_state,
 		{

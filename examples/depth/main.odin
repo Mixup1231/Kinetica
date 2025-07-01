@@ -9,8 +9,8 @@ import "../../kinetica/core"
 import vk "vendor:vulkan"
 
 Vertex :: struct {
-	position: [2]f32,
-	color:    [3]f32,
+	position: [3]f32,
+	normal:   [3]f32,
 }
 
 Ubo :: struct {
@@ -23,6 +23,7 @@ Frames_In_Flight : u32 : 3
 
 Application :: struct {
 	vk_allocator:      core.VK_Allocator,
+	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
 	graphics_pool:     vk.CommandPool,
 	transfer_pool:     vk.CommandPool,
@@ -38,16 +39,40 @@ Application :: struct {
 	uniform_buffer:    core.VK_Buffer,
 	pipeline:          vk.Pipeline,
 	pipeline_layout:   vk.PipelineLayout,
-	quad_vertices:     [4]Vertex,
-	quad_indices:      [6]u16,
+	cube_vertices:     [24]Vertex,
+	cube_indices:      [36]u16,
 	ubo:               Ubo,
 }
 application: Application
 
+create_depth_image :: proc(
+	extent: vk.Extent2D
+) {
+	using application
+	
+	if depth_image.handle != 0 do core.vk_image_destroy(&depth_image)	
+	
+	depth_image = core.vk_depth_image_create(
+		depth_format,
+		.OPTIMAL,
+		{
+			width = extent.width,
+			height = extent.height,
+			depth = 1
+		},
+		{
+			.TRANSFER_DST,
+			.DEPTH_STENCIL_ATTACHMENT
+		},
+		&vk_allocator
+	)
+}
+
 application_create :: proc() {	
 	using application
 	
-	core.window_create(800, 600, "Uniform example")
+	core.window_create(800, 600, "Depth example")
+	core.vk_swapchain_set_recreation_callback(create_depth_image)
 	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
@@ -57,53 +82,66 @@ application_create :: proc() {
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
 
-	quad_vertices = {
-		{
-			position = {-0.5, -0.5},
-			color    = {1, 0, 0}
-		},
-		{
-			position = {0.5, -0.5},
-			color    = {0, 1, 0}
-		},
-		{
-			position = {0.5, 0.5},
-			color    = {0, 0, 1}
-		},
-		{
-			position = {-0.5, 0.5},
-			color    = {1, 0, 1}
-		}
+	cube_vertices = {	
+		{ position = {-0.5, -0.5,  0.5}, normal = { 0,  0,  1} },
+		{ position = { 0.5, -0.5,  0.5}, normal = { 0,  0,  1} },
+		{ position = { 0.5,  0.5,  0.5}, normal = { 0,  0,  1} },
+		{ position = {-0.5,  0.5,  0.5}, normal = { 0,  0,  1} },
+		{ position = { 0.5, -0.5, -0.5}, normal = { 0,  0, -1} },
+		{ position = {-0.5, -0.5, -0.5}, normal = { 0,  0, -1} },
+		{ position = {-0.5,  0.5, -0.5}, normal = { 0,  0, -1} },
+		{ position = { 0.5,  0.5, -0.5}, normal = { 0,  0, -1} },
+		{ position = {-0.5, -0.5, -0.5}, normal = {-1,  0,  0} },
+		{ position = {-0.5, -0.5,  0.5}, normal = {-1,  0,  0} },
+		{ position = {-0.5,  0.5,  0.5}, normal = {-1,  0,  0} },
+		{ position = {-0.5,  0.5, -0.5}, normal = {-1,  0,  0} },
+		{ position = { 0.5, -0.5,  0.5}, normal = { 1,  0,  0} },
+		{ position = { 0.5, -0.5, -0.5}, normal = { 1,  0,  0} },
+		{ position = { 0.5,  0.5, -0.5}, normal = { 1,  0,  0} },
+		{ position = { 0.5,  0.5,  0.5}, normal = { 1,  0,  0} },
+		{ position = {-0.5,  0.5,  0.5}, normal = { 0,  1,  0} },
+		{ position = { 0.5,  0.5,  0.5}, normal = { 0,  1,  0} },
+		{ position = { 0.5,  0.5, -0.5}, normal = { 0,  1,  0} },
+		{ position = {-0.5,  0.5, -0.5}, normal = { 0,  1,  0} },
+		{ position = {-0.5, -0.5, -0.5}, normal = { 0, -1,  0} },
+		{ position = { 0.5, -0.5, -0.5}, normal = { 0, -1,  0} },
+		{ position = { 0.5, -0.5,  0.5}, normal = { 0, -1,  0} },
+		{ position = {-0.5, -0.5,  0.5}, normal = { 0, -1,  0} }
 	}
 
-	quad_indices = {
-		0, 1, 2,
-		2, 3, 0
+	cube_indices = {		
+		0, 1, 2, 2, 3, 0,
+		4, 5, 6, 6, 7, 4,
+		8, 9, 10, 10, 11, 8,
+		12, 13, 14, 14, 15, 12,
+		16, 17, 18, 18, 19, 16,
+		20, 21, 22, 22, 23, 20,
 	}
 
 	vk_allocator   = core.vk_allocator_get_default()
-	vertex_buffer  = core.vk_vertex_buffer_create(size_of(quad_vertices), &vk_allocator)
-	index_buffer   = core.vk_index_buffer_create(size_of(quad_indices), &vk_allocator)
+	vertex_buffer  = core.vk_vertex_buffer_create(size_of(cube_vertices), &vk_allocator)
+	index_buffer   = core.vk_index_buffer_create(size_of(cube_indices), &vk_allocator)
 	uniform_buffer = core.vk_uniform_buffer_create(size_of(ubo), &vk_allocator) 
-	
-	depth_image = core.vk_depth_image_create(.D32_SFLOAT, .OPTIMAL, {width = 800, height = 600, depth = 1}, {.TRANSFER_DST, .DEPTH_STENCIL_ATTACHMENT}, &vk_allocator)
+
+	depth_format = .D32_SFLOAT
+	create_depth_image(core.vk_swapchain_get_extent())
 	
 	transfer_pool = core.vk_command_pool_create(.Transfer)
-	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(quad_vertices[:]), &vk_allocator)
-	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(quad_indices[:]), &vk_allocator)
+	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(cube_vertices[:]), &vk_allocator)
+	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(cube_indices[:]), &vk_allocator)
 
 	swapchain_format := core.vk_swapchain_get_color_format()
-	rendering_info   := core.vk_rendering_info_create({swapchain_format}) 
+	rendering_info   := core.vk_rendering_info_create({swapchain_format}, depth_format) 
 
 	binding_description, attribute_descriptions := core.vk_vertex_description_create(Vertex)
 	defer delete(attribute_descriptions)
 	
 	vertex_input_state := core.vk_vertex_input_state_create({binding_description}, attribute_descriptions)
 
-	vertex_module := core.vk_shader_module_create("shaders/uniform.vert.spv")
+	vertex_module := core.vk_shader_module_create("shaders/depth.vert.spv")
 	defer core.vk_shader_module_destroy(vertex_module)
 	
-	fragment_module := core.vk_shader_module_create("shaders/uniform.frag.spv")
+	fragment_module := core.vk_shader_module_create("shaders/depth.frag.spv")
 	defer core.vk_shader_module_destroy(fragment_module)
 	
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
@@ -128,6 +166,7 @@ application_create :: proc() {
 	viewport_state       := core.vk_viewport_state_create()
 	rasterizer_state     := core.vk_rasterizer_state_create()
 	multisample_state    := core.vk_multisample_state_create()
+	depth_stencil_state  := core.vk_depth_stencil_state_create()
 	dynamic_state        := core.vk_dynamic_state_create()	
 	
 	pipeline, pipeline_layout = core.vk_graphics_pipeline_create(
@@ -137,6 +176,7 @@ application_create :: proc() {
 		&viewport_state,
 		&rasterizer_state,
 		&multisample_state,
+		&depth_stencil_state,
 		&color_blend_state,
 		&dynamic_state,
 		{
@@ -168,7 +208,7 @@ application_run :: proc() {
 		ubo.model = glsl.mat4Rotate({0, 0, 1}, rotation)
 		ubo.view = glsl.mat4LookAt({2, 2, -2}, {0, 0, 0}, {0, 1, 0})
 		ubo.proj = glsl.mat4Perspective(glsl.radians_f32(45), f32(extent.width) / f32(extent.height), 0.1, 10)
-		ubo.proj[1][1] *= -1
+		// ubo.proj[1][1] *= -1
 				
 		core.vk_buffer_copy(&uniform_buffer, &ubo)
 	
@@ -187,6 +227,19 @@ application_run :: proc() {
 			src_stage_mask  = {.TOP_OF_PIPE},
 			dst_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
 		)	
+
+		core.vk_command_image_barrier(
+			command_buffers[frame],
+			image             = depth_image.handle,
+			dst_access_mask   = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
+			old_layout        = .UNDEFINED,
+			new_layout        = .DEPTH_ATTACHMENT_OPTIMAL,
+			src_stage_mask    = {.TOP_OF_PIPE},
+			dst_stage_mask    = {.EARLY_FRAGMENT_TESTS},
+			subresource_range = {{.DEPTH}, 0, 1, 0, 1}
+		)
+		
+		depth_attachment := core.vk_depth_attachment_create(depth_image.view)
 		
 		core.vk_command_begin_rendering(
 			command_buffer = command_buffers[frame],
@@ -196,16 +249,19 @@ application_run :: proc() {
 			},
 			color_attachments = {
 				core.vk_color_attachment_create(core.vk_swapchain_get_image_view(index))
-			}
+			},
+			depth_attachment = &depth_attachment
 		)
 		
 		core.vk_command_viewport_set(
 			command_buffers[frame],
 			{{
-				x = 0,
-				y = 0,
-				width = f32(extent.width),
-				height = f32(extent.height)
+				x        = 0,
+				y        = 0,
+				width    = f32(extent.width),
+				height   = f32(extent.height),
+				minDepth = 0,
+				maxDepth = 1,
 			}}
 		)
 
@@ -222,7 +278,7 @@ application_run :: proc() {
 		core.vk_descriptor_set_update_uniform_buffer(descriptor_sets[frame], 0, &uniform_buffer)
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {vertex_buffer.handle})
 		core.vk_command_index_buffer_bind(command_buffers[frame], index_buffer.handle, .UINT16)
-		core.vk_command_draw_indexed(command_buffers[frame], 6)
+		core.vk_command_draw_indexed(command_buffers[frame], u32(len(cube_indices)))
 		core.vk_command_end_rendering(command_buffers[frame])
 		
 		core.vk_command_image_barrier(
