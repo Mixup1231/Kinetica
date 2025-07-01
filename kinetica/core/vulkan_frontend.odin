@@ -56,6 +56,14 @@ VK_Buffer :: struct {
 	vk_allocator: ^VK_Allocator,
 }
 
+VK_Image :: struct {
+	handle:       vk.Image,
+	view:         vk.ImageView,
+	format:       vk.Format,
+	vk_allocator: ^VK_Allocator,
+	allocation:   VK_Allocation,
+}
+
 vk_allocate_default :: proc(
 	allocator:     ^VK_Allocator,
 	allocate_info: ^VK_Allocate_Info
@@ -528,6 +536,203 @@ vk_swapchain_get_color_format :: proc() -> (
 	ensure(vk_context.swapchain.initialised)
 
 	return vk_context.swapchain.attributes.format.format
+}
+
+vk_swapchain_set_recreation_callback :: proc(
+	callback: proc(vk.Extent2D)
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+	
+	vk_context.swapchain.on_recreation = callback
+}
+
+vk_image_find_supported_format :: proc(
+	candidates: []vk.Format,
+	tiling:     vk.ImageTiling,
+	features:   vk.FormatFeatureFlags
+) -> (
+	supported_format: Maybe(vk.Format)
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	for format in candidates {
+		format_properties: vk.FormatProperties
+		vk.GetPhysicalDeviceFormatProperties(vk_context.device.physical, format, &format_properties)
+
+		#partial switch (tiling) {
+		case .LINEAR: if (features & format_properties.linearTilingFeatures) == features do return format
+		case .OPTIMAL: if (features & format_properties.optimalTilingFeatures) == features do return format
+		case: ensure(false)
+		}
+	}
+
+	return nil
+}
+
+vk_image_format_has_stencil_component :: proc(
+	format: vk.Format
+) -> (
+	has_stencil: bool
+) {
+	#partial switch (format) {
+	case .D16_UNORM_S8_UINT: return true 
+	case .D24_UNORM_S8_UINT: return true
+	case .D32_SFLOAT_S8_UINT: return true
+	case: return false
+	}
+}
+
+vk_image_create :: proc(
+	format:       vk.Format,
+	tiling:       vk.ImageTiling,
+	extent:       vk.Extent3D,
+	usage:        vk.ImageUsageFlags,
+	aspect_mask:  vk.ImageAspectFlags,
+	vk_allocator: ^VK_Allocator,
+	samples:      vk.SampleCountFlags = {._1},
+	image_type:   vk.ImageType        = .D2,
+	view_type:    vk.ImageViewType    = .D2,
+	sharing_mode: vk.SharingMode      = .EXCLUSIVE,
+	queues:       VK_Queue_Types      = {},
+	flags:        vk.ImageCreateFlags = {},
+	mip_levels:   u32                 = 1,
+	array_layers: u32                 = 1,
+) -> (
+	image: VK_Image
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_allocator != nil)
+	
+	image.format       = format
+	image.vk_allocator = vk_allocator
+	
+	i: u32
+	queue_indices: [len(VK_Queue_Type)]u32
+	for queue in queues {
+		stored: bool
+		for index in queue_indices do if index == vk_context.device.queue_indices[queue] do stored = true
+		
+		if !stored {
+			queue_indices[i] = vk_context.device.queue_indices[queue]
+			i += 1
+		}
+	}
+	
+	image_create_info: vk.ImageCreateInfo = {
+		sType                 = .IMAGE_CREATE_INFO,
+		flags                 = flags,
+		imageType             = image_type,
+		format                = format,
+		extent                = extent,
+		mipLevels             = mip_levels,
+		arrayLayers           = array_layers,
+		samples               = samples,
+		tiling                = tiling,
+		usage                 = usage,
+		sharingMode           = sharing_mode,
+		queueFamilyIndexCount = u32(i),
+		pQueueFamilyIndices   = raw_data(queue_indices[:]),
+	}
+	vk_warn(vk.CreateImage(vk_context.device.logical, &image_create_info, nil, &image.handle))
+	
+	memory_requirements: vk.MemoryRequirements
+	vk.GetImageMemoryRequirements(vk_context.device.logical, image.handle, &memory_requirements)
+
+	memory_type_index := vk_memory_type_find_index(vk_context.device.physical, {.DEVICE_LOCAL}, memory_requirements.memoryTypeBits)
+	ensure(memory_type_index != nil)
+
+	memory_info: vk.MemoryAllocateInfo = {
+		sType           = .MEMORY_ALLOCATE_INFO,
+		allocationSize  = memory_requirements.size,
+		memoryTypeIndex = memory_type_index.(u32)
+	}
+
+	allocate_info: VK_Allocate_Info = {
+		memory_info     = memory_info,
+		memory_map_type = .Never
+	}
+ 
+	image.allocation = vk_allocator->allocate(&allocate_info)
+
+	vk.BindImageMemory(vk_context.device.logical, image.handle, image.allocation.handle, image.allocation.offset)
+
+	image_view_create_info: vk.ImageViewCreateInfo = {
+		sType    = .IMAGE_VIEW_CREATE_INFO,
+		image    = image.handle,
+		viewType = view_type,
+		format   = format,
+		components = {
+			r = .IDENTITY,
+			g = .IDENTITY,
+			b = .IDENTITY,
+			a = .IDENTITY,
+		},
+		subresourceRange = {
+			aspectMask     = aspect_mask,
+			baseMipLevel   = 0,
+			levelCount     = mip_levels,
+			baseArrayLayer = 0,
+			layerCount     = array_layers,
+		}
+	}
+	vk_warn(vk.CreateImageView(vk_context.device.logical, &image_view_create_info, nil, &image.view))
+	
+	return image
+}
+
+vk_image_destroy :: proc(
+	image: ^VK_Image
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(image != nil)
+	ensure(image.vk_allocator != nil)
+
+	vk.DestroyImageView(vk_context.device.logical, image.view, nil)
+	vk.DestroyImage(vk_context.device.logical, image.handle, nil)
+	image.vk_allocator->deallocate(&image.allocation)
+}
+
+vk_depth_image_create :: proc(
+	format:       vk.Format,
+	tiling:       vk.ImageTiling,
+	extent:       vk.Extent3D,
+	usage:        vk.ImageUsageFlags,
+	vk_allocator: ^VK_Allocator,
+	samples:      vk.SampleCountFlags = {._1},
+	image_type:   vk.ImageType        = .D2,
+	view_type:    vk.ImageViewType    = .D2,
+	sharing_mode: vk.SharingMode      = .EXCLUSIVE,
+	queues:       VK_Queue_Types      = {},
+	flags:        vk.ImageCreateFlags = {},
+	mip_levels:   u32                 = 1,
+	array_layers: u32                 = 1,
+) -> (
+	depth_image: VK_Image
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_allocator != nil)
+	
+	return vk_image_create(
+		format,
+		tiling,
+		extent,
+		usage,
+		{.DEPTH},
+		vk_allocator,
+		samples,
+		image_type,
+		view_type,
+		sharing_mode,
+		queues,
+		flags,
+		mip_levels,
+		array_layers
+	)
 }
 
 vk_rendering_info_create :: proc(
@@ -1226,8 +1431,13 @@ vk_buffer_create :: proc(
 	i: u32
 	queue_indices: [len(VK_Queue_Type)]u32
 	for queue in queues {
-		queue_indices[i] = vk_context.device.queue_indices[queue]
-		i += 1
+		stored: bool
+		for index in queue_indices do if index == vk_context.device.queue_indices[queue] do stored = true 
+		
+		if !stored {
+			queue_indices[i] = vk_context.device.queue_indices[queue]
+			i += 1
+		}
 	}
 	
 	buffer_create_info: vk.BufferCreateInfo = {

@@ -63,6 +63,7 @@ VK_Swapchain :: struct {
 	image_views:     []vk.ImageView,
 	attributes:      VK_Swapchain_Attributes,
 	support_details: VK_Swapchain_Support_Details,
+	on_recreation:   proc(vk.Extent2D),
 
 	initialised: bool,
 }
@@ -642,6 +643,8 @@ vk_swapchain_recreate :: proc(
 	vk.DeviceWaitIdle(vk_context.device.logical)
 	vk_swapchain_destroy()
 	vk_swapchain_create(&attributes)
+	
+	if vk_context.swapchain.on_recreation != nil do vk_context.swapchain.on_recreation(attributes.extent)
 }
 
 vk_memory_type_find_index :: proc(
