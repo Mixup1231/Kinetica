@@ -1,6 +1,8 @@
 package main
 
 import "core:log"
+import "core:time"
+import "core:math/linalg/glsl"
 
 import "../../kinetica/core"
 
@@ -11,8 +13,15 @@ Vertex :: struct {
 	color:    [3]f32,
 }
 
+Ubo :: struct {
+	model: glsl.mat4,
+	view:  glsl.mat4,
+	proj:  glsl.mat4,
+}
+
+Frames_In_Flight : u32 : 3
+
 Application :: struct {
-	frames_in_flight:  u32,
 	vk_allocator:      core.VK_Allocator,
 	graphics_pool:     vk.CommandPool,
 	transfer_pool:     vk.CommandPool,
@@ -22,13 +31,15 @@ Application :: struct {
 	block_until:       []vk.Fence,
 	vertex_buffer:     core.VK_Buffer,
 	index_buffer:      core.VK_Buffer,
+	descriptor_pool:   vk.DescriptorPool,
 	descriptor_layout: vk.DescriptorSetLayout,
+	descriptor_sets:   []vk.DescriptorSet,
 	uniform_buffer:    core.VK_Buffer,
 	pipeline:          vk.Pipeline,
 	pipeline_layout:   vk.PipelineLayout,
 	quad_vertices:     [4]Vertex,
 	quad_indices:      [6]u16,
-	color:             [3]f32,
+	ubo:               Ubo,
 }
 application: Application
 
@@ -37,11 +48,10 @@ application_create :: proc() {
 	
 	core.window_create(800, 600, "Quad example")
 	
-	frames_in_flight = 3	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
-	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, frames_in_flight)
-	image_available = core.vk_semaphore_create(frames_in_flight)
-	block_until     = core.vk_fence_create(true, frames_in_flight)
+	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
+	image_available = core.vk_semaphore_create(Frames_In_Flight)
+	block_until     = core.vk_fence_create(true, Frames_In_Flight)
 	
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
@@ -73,11 +83,11 @@ application_create :: proc() {
 	vk_allocator   = core.vk_allocator_get_default()
 	vertex_buffer  = core.vk_vertex_buffer_create(size_of(quad_vertices), &vk_allocator)
 	index_buffer   = core.vk_index_buffer_create(size_of(quad_indices), &vk_allocator)
-	uniform_buffer = core.vk_uniform_buffer_create(size_of(color), &vk_allocator) 
+	uniform_buffer = core.vk_uniform_buffer_create(size_of(ubo), &vk_allocator) 
 	
 	transfer_pool = core.vk_command_pool_create(.Transfer)
-	core.vk_buffer_copy_staged(transfer_pool, &vertex_buffer, raw_data(quad_vertices[:]), &vk_allocator)
-	core.vk_buffer_copy_staged(transfer_pool, &index_buffer, raw_data(quad_indices[:]), &vk_allocator)
+	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(quad_vertices[:]), &vk_allocator)
+	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(quad_indices[:]), &vk_allocator)
 
 	swapchain_format := core.vk_swapchain_get_color_format()
 	rendering_info   := core.vk_rendering_info_create({swapchain_format}) 
@@ -95,6 +105,8 @@ application_create :: proc() {
 	
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
 	color_blend_state := core.vk_color_blend_state_create({color_blend_attachment_state})
+
+	descriptor_pool = core.vk_descriptor_pool_create({.UNIFORM_BUFFER}, {Frames_In_Flight}, Frames_In_Flight)
 	
 	descriptor_layout = core.vk_descriptor_set_layout_create(
 		{{
@@ -104,6 +116,10 @@ application_create :: proc() {
 			stageFlags      = {.VERTEX},
 		}},
 	)
+
+	descriptor_layouts: [Frames_In_Flight]vk.DescriptorSetLayout
+	for i in 0..<Frames_In_Flight do descriptor_layouts[i] = descriptor_layout
+	descriptor_sets = core.vk_descriptor_set_create(descriptor_pool, descriptor_layouts[:])
 
 	input_assembly_state := core.vk_input_assembly_state_create()
 	viewport_state       := core.vk_viewport_state_create()
@@ -130,12 +146,30 @@ application_create :: proc() {
 
 application_run :: proc() {	
 	using application
-	
+
+	dt: f64
+	rotation: f32
+	start, end: time.Tick
 	frame, index: u32
 	for !core.window_should_close() {
 		core.window_poll()		
+
+		extent := core.vk_swapchain_get_extent()
+		
+		dt = time.duration_seconds(time.tick_diff(start, end))
+		start = time.tick_now()
+
+		rotation += f32(dt) * (glsl.PI / 4) 
+		if rotation >= glsl.PI * 2 do rotation = 0
+		
+		ubo.model = glsl.mat4Rotate({0, 0, 1}, rotation)
+		ubo.view = glsl.mat4LookAt({2, 2, -2}, {0, 0, 0}, {0, 1, 0})
+		ubo.proj = glsl.mat4Perspective(glsl.radians_f32(45), f32(extent.width) / f32(extent.height), 0.1, 10)
+		ubo.proj[1][1] *= -1
+				
+		core.vk_buffer_copy(&uniform_buffer, &ubo)
 	
-		frame = (frame + 1) % frames_in_flight
+		frame = (frame + 1) % Frames_In_Flight
 		index = core.vk_swapchain_get_next_image_index(image_available[frame], block_until[frame])		
 	
 		core.vk_command_buffer_reset(command_buffers[frame])
@@ -149,9 +183,7 @@ application_run :: proc() {
 			new_layout      = .COLOR_ATTACHMENT_OPTIMAL,
 			src_stage_mask  = {.TOP_OF_PIPE},
 			dst_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
-		)
-	
-		extent := core.vk_swapchain_get_extent()
+		)	
 		
 		core.vk_command_begin_rendering(
 			command_buffer = command_buffers[frame],
@@ -183,6 +215,10 @@ application_run :: proc() {
 		)
 		
 		core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
+
+		core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
+		
+		core.vk_descriptor_set_update_uniform_buffer(descriptor_sets[frame], 0, &uniform_buffer)
 		
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {vertex_buffer.handle})
 		
@@ -213,7 +249,9 @@ application_run :: proc() {
 			block_until[frame]
 		)
 
-		core.vk_present(render_finished[index], index)
+		core.vk_present(render_finished[index], index)		
+		
+		end = time.tick_now()
 	}	
 	
 	core.vk_command_buffer_destroy(graphics_pool, command_buffers)
@@ -226,6 +264,8 @@ application_run :: proc() {
 	core.vk_buffer_destroy(&index_buffer)
 	core.vk_buffer_destroy(&uniform_buffer)
 	core.vk_descriptor_set_layout_destroy(descriptor_layout)
+	core.vk_descriptor_set_destroy(descriptor_pool, descriptor_sets)
+	core.vk_descriptor_pool_destroy(descriptor_pool)
 	core.vk_graphics_pipeline_destroy(pipeline, pipeline_layout)
 	core.window_destroy()
 }

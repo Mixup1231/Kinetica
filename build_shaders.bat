@@ -2,3 +2,5 @@
 if not exist "shaders" mkdir shaders
 glslang -V examples/quad/quad.frag -o shaders/quad.frag.spv
 glslang -V examples/quad/quad.vert -o shaders/quad.vert.spv
+glslang -V examples/uniform/uniform.frag -o shaders/uniform.frag.spv
+glslang -V examples/uniform/uniform.vert -o shaders/uniform.vert.spv

@@ -138,25 +138,51 @@ vk_shader_module_destroy :: proc(
 	vk.DestroyShaderModule(vk_context.device.logical, shader_module, nil)
 }
 
-// vk_descriptor_pool_create :: proc(
-// 	descriptor_types:  []vk.DescriptorType,
-// 	descriptor_counts: []u32,
-// 	max_sets:          u32,
-// 	allocator := context.allocator
-// ) -> (
-// 	descriptor_pool: vk.DescriptorPool
-// ) {
-// 	context.allocator = allocator
-// 	ensure(vk_context.initialised)
-// 	ensure(vk_context.device.initialised)
+vk_descriptor_pool_create :: proc(
+	descriptor_types:  []vk.DescriptorType,
+	descriptor_counts: []u32,
+	max_sets:          u32,
+	allocator := context.allocator
+) -> (
+	descriptor_pool: vk.DescriptorPool
+) {
+	context.allocator = allocator
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
 
-// 	type_count := len()
-// 	ensure(len(descriptor_types) == len(descriptor_counts))
+	type_count := len(descriptor_types)
+	ensure(type_count == len(descriptor_counts))
 
-// 	pool_sizes := make([]vk.DescriptorPoolSize, len(descriptor_types))
+	pool_sizes := make([]vk.DescriptorPoolSize, type_count)
+	defer delete(pool_sizes)
+	
+	for &pool_size, i in pool_sizes {
+		pool_size = {
+			type            = descriptor_types[i],
+			descriptorCount = descriptor_counts[i]
+		}
+	}
 
-// 	return descriptor_pool
-// }
+	descriptor_pool_create_info: vk.DescriptorPoolCreateInfo = {
+		sType         = .DESCRIPTOR_POOL_CREATE_INFO,
+		flags         = {.FREE_DESCRIPTOR_SET},
+		poolSizeCount = u32(type_count),
+		pPoolSizes    = raw_data(pool_sizes),
+		maxSets       = max_sets
+	}
+	vk_warn(vk.CreateDescriptorPool(vk_context.device.logical, &descriptor_pool_create_info, nil, &descriptor_pool))
+
+	return descriptor_pool
+}
+
+vk_descriptor_pool_destroy :: proc(
+	descriptor_pool: vk.DescriptorPool
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk.DestroyDescriptorPool(vk_context.device.logical, descriptor_pool, nil)
+}
 
 vk_descriptor_set_layout_create :: proc(
 	bindings: []vk.DescriptorSetLayoutBinding,
@@ -185,6 +211,127 @@ vk_descriptor_set_layout_destroy :: proc(
 	ensure(vk_context.device.initialised)
 	
 	vk.DestroyDescriptorSetLayout(vk_context.device.logical, descriptor_layout, nil)
+}
+
+vk_descriptor_set_create :: proc {
+	vk_descriptor_set_create_single,
+	vk_descriptor_set_create_slice,
+}
+
+vk_descriptor_set_create_single :: proc(
+	descriptor_pool:   vk.DescriptorPool,
+	descriptor_layout: vk.DescriptorSetLayout
+) -> (
+	descriptor_set: vk.DescriptorSet
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	descriptor_layout := descriptor_layout 
+
+	descriptor_set_allocate_info: vk.DescriptorSetAllocateInfo = {
+		sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
+		descriptorPool     = descriptor_pool,
+		descriptorSetCount = 1,
+		pSetLayouts        = &descriptor_layout
+	}
+	vk_warn(vk.AllocateDescriptorSets(vk_context.device.logical, &descriptor_set_allocate_info, &descriptor_set))
+
+	return descriptor_set
+}
+
+vk_descriptor_set_create_slice :: proc(
+	descriptor_pool:    vk.DescriptorPool,
+	descriptor_layouts: []vk.DescriptorSetLayout,
+	allocator := context.allocator
+) -> (
+	descriptor_sets: []vk.DescriptorSet
+) {
+	context.allocator = allocator
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	layout_count := u32(len(descriptor_layouts))
+	descriptor_sets = make([]vk.DescriptorSet, layout_count)
+
+	descriptor_set_allocate_info: vk.DescriptorSetAllocateInfo = {
+		sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
+		descriptorPool     = descriptor_pool,
+		descriptorSetCount = layout_count,
+		pSetLayouts        = raw_data(descriptor_layouts)
+	}
+	vk_warn(vk.AllocateDescriptorSets(vk_context.device.logical, &descriptor_set_allocate_info, raw_data(descriptor_sets)))
+
+	return descriptor_sets
+}
+
+vk_descriptor_set_destroy :: proc {
+	vk_descriptor_set_destroy_single,
+	vk_descriptor_set_destroy_slice,
+}
+
+vk_descriptor_set_destroy_single :: proc(
+	descriptor_pool: vk.DescriptorPool,
+	descriptor_set:  vk.DescriptorSet
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+
+	descriptor_set := descriptor_set
+	
+	vk.FreeDescriptorSets(vk_context.device.logical, descriptor_pool, 1, &descriptor_set)
+}
+
+vk_descriptor_set_destroy_slice :: proc(
+	descriptor_pool: vk.DescriptorPool,
+	descriptor_sets: []vk.DescriptorSet
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk.FreeDescriptorSets(vk_context.device.logical, descriptor_pool, u32(len(descriptor_sets)), raw_data(descriptor_sets))
+	delete(descriptor_sets)
+}
+
+vk_command_descriptor_set_bind :: proc(
+	command_buffer:  vk.CommandBuffer,
+	pipeline_layout: vk.PipelineLayout,
+	bind_point:      vk.PipelineBindPoint,
+	descriptor_set:  vk.DescriptorSet
+) {
+	descriptor_set := descriptor_set
+
+	vk.CmdBindDescriptorSets(command_buffer, bind_point, pipeline_layout, 0, 1, &descriptor_set, 0, nil)
+}
+
+// NOTE(Mitchell): Could abstract into VK_Descriptor_Set
+vk_descriptor_set_update_uniform_buffer :: proc(
+	descriptor_set: vk.DescriptorSet,
+	binding:        u32,
+	uniform_buffer: ^VK_Buffer,
+	offset:         vk.DeviceSize = 0,     
+	array_element:  u32           = 0
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(uniform_buffer != nil)
+
+	descriptor_buffer_info: vk.DescriptorBufferInfo = {
+		buffer = uniform_buffer.handle,
+		offset = offset,
+		range  = uniform_buffer.size
+	}
+
+	write_desriptor_set: vk.WriteDescriptorSet = {
+		sType           = .WRITE_DESCRIPTOR_SET,
+		dstSet          = descriptor_set,
+		dstBinding      = binding,
+		dstArrayElement = array_element,
+		descriptorCount = 1,
+		descriptorType  = .UNIFORM_BUFFER,
+		pBufferInfo     = &descriptor_buffer_info
+	}
+	vk.UpdateDescriptorSets(vk_context.device.logical, 1, &write_desriptor_set, 0, nil)
 }
 
 vk_shader_stage_state_create :: proc(
@@ -1096,7 +1243,7 @@ vk_buffer_create :: proc(
 	
 	allocate_info: VK_Allocate_Info = {
 		memory_flags    = memory_flags,
-		memory_map_type = memory_map_type 
+		memory_map_type = memory_map_type
 	}
 	
 	memory_requirements: vk.MemoryRequirements
@@ -1227,9 +1374,15 @@ vk_command_index_buffer_bind :: #force_inline proc(
 	vk.CmdBindIndexBuffer(command_buffer, index_buffer, offset, index_type)
 }
 
+vk_buffer_copy :: proc {
+	vk_buffer_copy_buffer,
+	vk_buffer_copy_staged,
+	vk_buffer_copy_mapped,
+}
+
 // TODO(Mitchell): Improve abstraction
 // NOTE(Mitchell): Command pool must be created with transfer queue support
-vk_buffer_copy :: proc(
+vk_buffer_copy_buffer :: proc(
 	command_pool: vk.CommandPool,
 	src_buffer:   ^VK_Buffer,
 	dst_buffer:   ^VK_Buffer,
@@ -1285,6 +1438,29 @@ vk_buffer_copy_staged :: proc(
 	mem.copy(data, buffer_data, int(staging_buffer.size))
 	vk.UnmapMemory(vk_context.device.logical, staging_buffer.allocation.handle)
 
-	vk_buffer_copy(command_pool, &staging_buffer, buffer, buffer.size)
+	vk_buffer_copy_buffer(command_pool, &staging_buffer, buffer, buffer.size)
 	vk_buffer_destroy(&staging_buffer)
+}
+
+vk_buffer_copy_mapped :: proc(
+	buffer:      ^VK_Buffer,
+	buffer_data: rawptr,
+	flush:       bool = false
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(buffer != nil)
+	ensure(buffer_data != nil)
+	
+	mem.copy(buffer.allocation.data, buffer_data, int(buffer.size))
+
+	if flush {
+		mapped_memory_range: vk.MappedMemoryRange = {
+			sType  = .MAPPED_MEMORY_RANGE,
+			memory = buffer.allocation.handle,
+			offset = buffer.allocation.offset,
+			size   = buffer.size
+		}
+		vk_warn(vk.FlushMappedMemoryRanges(vk_context.device.logical, 1, &mapped_memory_range))
+	}
 }
