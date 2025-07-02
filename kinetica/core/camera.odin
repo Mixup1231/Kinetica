@@ -228,7 +228,7 @@ camera_3d_get_vectors :: proc(
 
 	vectors[.Front] = la.quaternion_mul_vector3(orientation, la.Vector3f32({0, 0, -1}))
 	vectors[.Right] = la.quaternion_mul_vector3(orientation, la.Vector3f32({1, 0, 0}))
-	vectors[.Up]    = la.quaternion_mul_vector3(orientation, la.Vector3f32({0, 1, 0}))
+	vectors[.Up]    = la.quaternion_mul_vector3(orientation, la.Vector3f32({0, -1, 0}))
 
 	return vectors
 }
