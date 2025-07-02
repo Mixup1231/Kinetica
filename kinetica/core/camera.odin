@@ -214,7 +214,7 @@ camera_3d_get_up :: proc(
 ) {
 	ensure(camera != nil)
 
-	return la.quaternion_mul_vector3(camera.rotation, la.Vector3f32({0, 1, 0}))
+	return la.quaternion_mul_vector3(camera.rotation, la.Vector3f32({0, -1, 0}))
 }
 
 camera_3d_get_vectors :: proc(
