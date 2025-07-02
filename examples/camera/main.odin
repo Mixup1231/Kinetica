@@ -2,7 +2,6 @@ package main
 
 import "core:log"
 import "core:time"
-import "core:math/linalg/glsl"
 import la "core:math/linalg"
 
 import "../../kinetica/core"
@@ -15,7 +14,7 @@ Vertex :: struct {
 }
 
 Ubo :: struct {
-	proj:  glsl.mat4,
+	proj:  la.Matrix4f32,
 }
 
 Frames_In_Flight : u32 : 3
@@ -60,10 +59,7 @@ create_depth_image :: proc(
 			height = extent.height,
 			depth = 1
 		},
-		{
-			.TRANSFER_DST,
-			.DEPTH_STENCIL_ATTACHMENT
-		},
+		{.DEPTH_STENCIL_ATTACHMENT},
 		&vk_allocator
 	)
 }
@@ -71,12 +67,14 @@ create_depth_image :: proc(
 application_create :: proc() {	
 	using application
 	
-	core.window_create(800, 600, "Depth example")
+	core.window_create(800, 600, "Camera example")
+	
 	core.vk_swapchain_set_recreation_callback(create_depth_image)
+	extent := core.vk_swapchain_get_extent()
 
 	core.input_set_mouse_mode(.Locked)
 
-	camera = core.camera_3d_create(f32(800)/f32(600), fovy = glsl.radians_f32(45))
+	camera = core.camera_3d_create(f32(extent.width)/f32(extent.height), fovy = la.to_radians(f32(45)))
 	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
@@ -114,9 +112,9 @@ application_create :: proc() {
 	}
 
 	cube_indices = {		
-		0, 1, 2, 2, 3, 0,
-		4, 5, 6, 6, 7, 4,
-		8, 9, 10, 10, 11, 8,
+		0,  1,  2,  2,  3,  0,
+		4,  5,  6,  6,  7,  4,
+		8,  9,  10, 10, 11, 8,
 		12, 13, 14, 14, 15, 12,
 		16, 17, 18, 18, 19, 16,
 		20, 21, 22, 22, 23, 20,
