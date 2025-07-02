@@ -4,10 +4,10 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 window_create :: proc(
-	width: i32,
-	height: i32,
-	title: cstring,
-	app_name: cstring = "",
+	width:       i32,
+	height:      i32,
+	title:       cstring,
+	app_name:    cstring = "",
 	app_version: u32 = 0,
 	allocator := context.allocator,
 ) {
@@ -31,12 +31,15 @@ window_create :: proc(
 
 	input_init()
 
+	layers: []cstring
+	when !RELEASE do layers = {"VK_LAYER_KHRONOS_validation"}
+
 	app_info: VK_Application_Info = {
 		api_version = vk.API_VERSION_1_3,
 		app_name    = app_name,
 		app_version = app_version,
 		extensions  = {},
-		layers      = {"VK_LAYER_KHRONOS_validation"},
+		layers      = layers,
 		features    = nil,
 	}
 
@@ -53,9 +56,18 @@ window_create :: proc(
 
 	swapchain_attributes: VK_Swapchain_Attributes = {
 		present_mode = .FIFO,
-		extent = {width = u32(width), height = u32(height)},
-		format = {format = .R8G8B8A8_SRGB, colorSpace = .SRGB_NONLINEAR},
-		image_usage = {.COLOR_ATTACHMENT, .TRANSFER_DST},
+		extent = {
+			width  = u32(width),
+			height = u32(height)
+		},
+		format = {
+			format     = .R8G8B8A8_SRGB,
+			colorSpace = .SRGB_NONLINEAR
+		},
+		image_usage = {
+			.COLOR_ATTACHMENT,
+			.TRANSFER_DST
+		},
 	}
 
 	vk_init(app_info, device_attribtes, swapchain_attributes)
@@ -77,32 +89,45 @@ window_poll :: proc() {
 	input_poll()
 }
 
-window_should_close :: proc() -> bool {
+window_should_close :: proc() -> (
+	should_close: bool
+) {
 	ensure(glfw_context.initialised)
 
 	return bool(glfw.WindowShouldClose(glfw_context.handle))
 }
 
-window_set_should_close :: proc(value: bool) {
+window_set_should_close :: proc(
+	value: bool
+) {
 	ensure(glfw_context.initialised)
 
 	glfw.SetWindowShouldClose(glfw_context.handle, b32(value))
 }
 
-window_get_size :: proc() -> (width: i32, height: i32) {
+window_get_size :: proc() -> (
+	width:  i32,
+	height: i32
+) {
 	ensure(glfw_context.initialised)
 
 	return glfw_context.width, glfw_context.height
 }
 
-window_set_size :: proc(width: i32, height: i32) {
+window_set_size :: proc(
+	width:  i32,
+	height: i32
+) {
 	ensure(glfw_context.initialised)
 
 	glfw.SetWindowSize(glfw_context.handle, width, height)
 	glfw_context.width, glfw_context.height = width, height
 }
 
-window_get_framebuffer_size :: proc() -> (width: i32, height: i32) {
+window_get_framebuffer_size :: proc() -> (
+	width:  i32,
+	height: i32
+) {
 	ensure(glfw_context.initialised)
 
 	return glfw.GetFramebufferSize(glfw_context.handle)
@@ -114,7 +139,9 @@ window_wait_events :: proc() {
 	glfw.WaitEvents()
 }
 
-window_get_handle :: proc() -> glfw.WindowHandle {
+window_get_handle :: proc() -> (
+	handle: glfw.WindowHandle
+) {
 	return glfw_context.handle
 }
 
