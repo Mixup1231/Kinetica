@@ -21,6 +21,9 @@ Camera_3D :: struct {
 	projection:  la.Matrix4x4f32,
 	position:    la.Vector3f32,
 	sensitivity: [2]f32,
+	aspect:      f32,
+	near:        f32,
+	far:         f32,
 	fovy:        f32,
 	speed:       f32
 }
@@ -82,14 +85,14 @@ view_projection_get_frustum :: proc(
 }
 
 frustum_intersects_aabb :: proc(
-	aabb:           AABB,
-	frustum_planes: ^Frustum
+	aabb:    AABB,
+	frustum: ^Frustum
 ) -> (
 	intersects: bool
 ) {
-	ensure(frustum_planes != nil)
+	ensure(frustum != nil)
 
-	for &plane in frustum_planes {
+	for &plane in frustum {
 		positive := aabb_get_positive_vertex(aabb, plane.normal)
 		distance := la.dot(plane.normal, positive) + plane.d
 		
@@ -101,7 +104,7 @@ frustum_intersects_aabb :: proc(
 
 camera_3d_create :: proc(
 	aspect:      f32,
-	fovy:        f32           = la.PI / 2,
+	fovy:        f32           = la.PI / 4,
 	near:        f32           = 0.01,
 	far:         f32           = 100,
 	position:    la.Vector3f32 = {0, 0, 0},
@@ -113,11 +116,14 @@ camera_3d_create :: proc(
 	camera: Camera_3D
 ) {
 	camera = {
+		projection  = la.matrix4_perspective_f32(fovy, aspect, near, far),
 		rotation    = la.quaternion_from_pitch_yaw_roll_f32(pitch, yaw, 0),
 		position    = position,
-		sensitivity = sensitivity,
 		fovy        = fovy,
-		projection  = la.matrix4_perspective_f32(fovy, aspect, near, far),
+		aspect      = aspect,
+		near        = near,
+		far         = far,
+		sensitivity = sensitivity,
 		speed       = speed,
 	}
 
@@ -146,13 +152,14 @@ camera_3d_update :: proc(
 
 camera_3d_set_projection :: proc(
 	camera: ^Camera_3D,
+	fovy:   f32,
 	aspect: f32,
 	near:   f32,
 	far:    f32
 ) {
 	ensure(camera != nil)
 
-	camera.projection = la.matrix4_perspective_f32(camera.fovy, aspect, near, far)
+	camera.projection = la.matrix4_perspective_f32(fovy, aspect, near, far)
 }
 
 camera_3d_get_view_projection :: proc(
@@ -176,7 +183,8 @@ camera_3d_set_fov :: proc(
 ) {
 	ensure(camera != nil)
 	
-	camera.fovy = fovy	
+	camera.fovy = fovy
+	camera_3d_set_projection(camera, camera.fovy, camera.aspect, camera.near, camera.far)
 }
 
 camera_3d_get_front :: proc(
