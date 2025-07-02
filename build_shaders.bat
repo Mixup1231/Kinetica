@@ -8,3 +8,5 @@ glslang -V examples/depth/depth.frag -o shaders/depth.frag.spv
 glslang -V examples/depth/depth.vert -o shaders/depth.vert.spv
 glslang -V examples/camera/camera.frag -o shaders/camera.frag.spv
 glslang -V examples/camera/camera.vert -o shaders/camera.vert.spv
+glslang -V examples/light/light.frag -o shaders/light.frag.spv
+glslang -V examples/light/light.vert -o shaders/light.vert.spv

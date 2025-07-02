@@ -14,7 +14,10 @@ Vertex :: struct {
 }
 
 Ubo :: struct {
-	proj:  la.Matrix4f32,
+	proj:           la.Matrix4f32,
+	position:       la.Vector4f32,
+	light_position: la.Vector4f32,
+	light_color:    la.Vector4f32,
 }
 
 Frames_In_Flight : u32 : 3
@@ -67,7 +70,7 @@ create_depth_image :: proc(
 application_create :: proc() {	
 	using application
 	
-	core.window_create(800, 600, "Camera example")
+	core.window_create(800, 600, "Light example")
 	
 	core.vk_swapchain_set_recreation_callback(create_depth_image)
 	extent := core.vk_swapchain_get_extent()
@@ -140,10 +143,10 @@ application_create :: proc() {
 	
 	vertex_input_state := core.vk_vertex_input_state_create({binding_description}, attribute_descriptions)
 
-	vertex_module := core.vk_shader_module_create("shaders/camera.vert.spv")
+	vertex_module := core.vk_shader_module_create("shaders/light.vert.spv")
 	defer core.vk_shader_module_destroy(vertex_module)
 	
-	fragment_module := core.vk_shader_module_create("shaders/camera.frag.spv")
+	fragment_module := core.vk_shader_module_create("shaders/light.frag.spv")
 	defer core.vk_shader_module_destroy(fragment_module)
 	
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
@@ -156,7 +159,7 @@ application_create :: proc() {
 			binding         = 0,
 			descriptorType  = .UNIFORM_BUFFER,
 			descriptorCount = 1,
-			stageFlags      = {.VERTEX},
+			stageFlags      = {.VERTEX, .FRAGMENT},
 		}},
 	)
 
@@ -196,6 +199,9 @@ application_run :: proc() {
 	rotation: f32
 	start, end: time.Tick
 	frame, index: u32
+	light_position: la.Vector3f32 = {2, -2, 2}
+	light_color: la.Vector3f32 = {1, 0.3, 0.3}
+	clicks: u32
 	for !core.window_should_close() {
 		core.window_poll()		
 		
@@ -228,10 +234,21 @@ application_run :: proc() {
 		if core.input_is_key_held(.Key_Left_Shift) {
 			camera.position += {0, 1, 0} * f32(dt) * camera.speed
 		}
+		if core.input_is_mouse_pressed(.Mouse_Button_Right) {
+			clicks = (clicks + 1) % 4
+			if clicks == 0 do light_color = {1, 0.3, 0.3}
+			if clicks == 1 do light_color = {0.3, 1, 0.3}
+			if clicks == 2 do light_color = {0.3, 0.3, 1}
+			if clicks == 3 do light_color = {1, 1, 1}
+		}
+		if core.input_is_mouse_pressed(.Mouse_Button_Left) do light_position = camera.position
 		 
 		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())
 		
 		ubo.proj = core.camera_3d_get_view_projection(&camera)
+		ubo.position = camera.position.xyzz
+		ubo.light_position = light_position.xyzz
+		ubo.light_color = light_color.xyzz
 		core.vk_buffer_copy(&uniform_buffer, &ubo)
 	
 		frame = (frame + 1) % Frames_In_Flight
