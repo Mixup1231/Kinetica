@@ -3,6 +3,7 @@ package main
 import "core:log"
 import "core:time"
 import "core:math/linalg/glsl"
+import la "core:math/linalg"
 
 import "../../kinetica/core"
 
@@ -14,14 +15,13 @@ Vertex :: struct {
 }
 
 Ubo :: struct {
-	model: glsl.mat4,
-	view:  glsl.mat4,
 	proj:  glsl.mat4,
 }
 
 Frames_In_Flight : u32 : 3
 
 Application :: struct {
+	camera:            core.Camera_3D,
 	vk_allocator:      core.VK_Allocator,
 	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
@@ -71,8 +71,12 @@ create_depth_image :: proc(
 application_create :: proc() {	
 	using application
 	
-	core.window_create(800, 600, "Camera example")
+	core.window_create(800, 600, "Depth example")
 	core.vk_swapchain_set_recreation_callback(create_depth_image)
+
+	core.input_set_mouse_mode(.Locked)
+
+	camera = core.camera_3d_create(f32(800)/f32(600), fovy = glsl.radians_f32(45))
 	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
@@ -138,10 +142,10 @@ application_create :: proc() {
 	
 	vertex_input_state := core.vk_vertex_input_state_create({binding_description}, attribute_descriptions)
 
-	vertex_module := core.vk_shader_module_create("shaders/depth.vert.spv")
+	vertex_module := core.vk_shader_module_create("shaders/camera.vert.spv")
 	defer core.vk_shader_module_destroy(vertex_module)
 	
-	fragment_module := core.vk_shader_module_create("shaders/depth.frag.spv")
+	fragment_module := core.vk_shader_module_create("shaders/camera.frag.spv")
 	defer core.vk_shader_module_destroy(fragment_module)
 	
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
@@ -196,20 +200,38 @@ application_run :: proc() {
 	frame, index: u32
 	for !core.window_should_close() {
 		core.window_poll()		
+		
+		if core.input_is_key_pressed(.Key_Escape) do core.window_set_should_close(true)
 
 		extent := core.vk_swapchain_get_extent()
 		
 		dt = time.duration_seconds(time.tick_diff(start, end))
 		start = time.tick_now()
 
-		rotation += f32(dt) * (glsl.PI / 4) 
-		if rotation >= glsl.PI * 2 do rotation = 0
+		camera.speed = 2
+		vecs := core.camera_3d_get_vectors(&camera)
+		if core.input_is_key_held(.Key_W) {
+			camera.position += vecs[.Front] * f32(dt) * camera.speed
+		}
+		if core.input_is_key_held(.Key_S) {
+			camera.position -= vecs[.Front] * f32(dt) * camera.speed
+		}
+		if core.input_is_key_held(.Key_D) {
+			camera.position += vecs[.Right] * f32(dt) * camera.speed
+		}
+		if core.input_is_key_held(.Key_A) {
+			camera.position -= vecs[.Right] * f32(dt) * camera.speed
+		}
+		if core.input_is_key_held(.Key_Space) {
+			camera.position += {0, -1, 0} * f32(dt) * camera.speed
+		}
+		if core.input_is_key_held(.Key_Left_Shift) {
+			camera.position += {0, 1, 0} * f32(dt) * camera.speed
+		}
+		 
+		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())
 		
-		ubo.model = glsl.mat4Rotate({0, 0, 1}, rotation)
-		ubo.view = glsl.mat4LookAt({2, 2, -2}, {0, 0, 0}, {0, 1, 0})
-		ubo.proj = glsl.mat4Perspective(glsl.radians_f32(45), f32(extent.width) / f32(extent.height), 0.1, 10)
-		// ubo.proj[1][1] *= -1
-				
+		ubo.proj = core.camera_3d_get_view_projection(&camera)
 		core.vk_buffer_copy(&uniform_buffer, &ubo)
 	
 		frame = (frame + 1) % Frames_In_Flight

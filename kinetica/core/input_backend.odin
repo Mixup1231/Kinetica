@@ -95,7 +95,4 @@ input_poll :: proc() {
 	
 	input.mouse_pos     = {x, y}
 	input.rel_mouse_pos = input.mouse_pos - prev_mouse_pos
-
-	// NOTE(Mitchell): recentre mouse when moved (while locked) to keep it relative to the window centre
-	if input.mouse_mode == .Locked do glfw.SetCursorPos(glfw_context.handle,f64(glfw_context.width) / 2, f64(glfw_context.height) / 2)
 }

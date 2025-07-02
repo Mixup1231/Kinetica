@@ -6,3 +6,5 @@ glslang -V examples/uniform/uniform.frag -o shaders/uniform.frag.spv
 glslang -V examples/uniform/uniform.vert -o shaders/uniform.vert.spv
 glslang -V examples/depth/depth.frag -o shaders/depth.frag.spv
 glslang -V examples/depth/depth.vert -o shaders/depth.vert.spv
+glslang -V examples/camera/camera.frag -o shaders/camera.frag.spv
+glslang -V examples/camera/camera.vert -o shaders/camera.vert.spv
