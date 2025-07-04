@@ -10,7 +10,7 @@ import vk "vendor:vulkan"
 
 Vertex :: struct {
 	position: [3]f32,
-	normal:   [3]f32,
+	uv:       [2]f32,
 }
 
 Ubo :: struct {
@@ -22,6 +22,8 @@ Frames_In_Flight : u32 : 3
 Application :: struct {
 	camera:            core.Camera_3D,
 	vk_allocator:      core.VK_Allocator,
+	sampler:           vk.Sampler,
+	image:             core.VK_Image,
 	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
 	graphics_pool:     core.VK_Command_Pool,
@@ -77,38 +79,75 @@ application_create :: proc() {
 	camera = core.camera_3d_create(f32(extent.width)/f32(extent.height))
 	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
+	transfer_pool = core.vk_command_pool_create(.Transfer)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
 	image_available = core.vk_semaphore_create(Frames_In_Flight)
 	block_until     = core.vk_fence_create(true, Frames_In_Flight)
 	
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
+	vk_allocator   = core.vk_allocator_get_default()
+	
+	data: [4*3*3]u8 = {
+		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
+		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
+		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
+	}
+	
+	sampler = core.vk_sampler_create()
+	image = core.vk_texture_image_create(.OPTIMAL, {3, 3, 1}, .R8G8B8A8_SRGB, &vk_allocator)
+
+	transition := core.vk_command_buffer_begin_single(transfer_pool)
+	core.vk_command_image_barrier(
+		command_buffer  = transition,
+		image           = image.handle,
+		new_layout      = .TRANSFER_DST_OPTIMAL,
+		dst_access_mask = {.TRANSFER_WRITE},
+		src_stage_mask  = {.TOP_OF_PIPE},
+		dst_stage_mask  = {.TRANSFER},
+	)
+	core.vk_command_buffer_end_single(transition)
+
+	core.vk_image_copy_staged(transfer_pool, &image, &data[0], &vk_allocator)
+
+	transition = core.vk_command_buffer_begin_single(graphics_pool)
+	core.vk_command_image_barrier(
+		command_buffer  = transition,
+		image           = image.handle,
+		old_layout      = .TRANSFER_DST_OPTIMAL,
+		new_layout      = .SHADER_READ_ONLY_OPTIMAL,
+		src_access_mask = {.TRANSFER_WRITE},
+		dst_access_mask = {.SHADER_READ},
+		src_stage_mask  = {.TRANSFER},
+		dst_stage_mask  = {.FRAGMENT_SHADER}
+	)
+	core.vk_command_buffer_end_single(transition)
 
 	cube_vertices = {	
-		{ position = {-0.5, -0.5,  0.5}, normal = { 0,  0,  1} },
-		{ position = { 0.5, -0.5,  0.5}, normal = { 0,  0,  1} },
-		{ position = { 0.5,  0.5,  0.5}, normal = { 0,  0,  1} },
-		{ position = {-0.5,  0.5,  0.5}, normal = { 0,  0,  1} },
-		{ position = { 0.5, -0.5, -0.5}, normal = { 0,  0, -1} },
-		{ position = {-0.5, -0.5, -0.5}, normal = { 0,  0, -1} },
-		{ position = {-0.5,  0.5, -0.5}, normal = { 0,  0, -1} },
-		{ position = { 0.5,  0.5, -0.5}, normal = { 0,  0, -1} },
-		{ position = {-0.5, -0.5, -0.5}, normal = {-1,  0,  0} },
-		{ position = {-0.5, -0.5,  0.5}, normal = {-1,  0,  0} },
-		{ position = {-0.5,  0.5,  0.5}, normal = {-1,  0,  0} },
-		{ position = {-0.5,  0.5, -0.5}, normal = {-1,  0,  0} },
-		{ position = { 0.5, -0.5,  0.5}, normal = { 1,  0,  0} },
-		{ position = { 0.5, -0.5, -0.5}, normal = { 1,  0,  0} },
-		{ position = { 0.5,  0.5, -0.5}, normal = { 1,  0,  0} },
-		{ position = { 0.5,  0.5,  0.5}, normal = { 1,  0,  0} },
-		{ position = {-0.5,  0.5,  0.5}, normal = { 0,  1,  0} },
-		{ position = { 0.5,  0.5,  0.5}, normal = { 0,  1,  0} },
-		{ position = { 0.5,  0.5, -0.5}, normal = { 0,  1,  0} },
-		{ position = {-0.5,  0.5, -0.5}, normal = { 0,  1,  0} },
-		{ position = {-0.5, -0.5, -0.5}, normal = { 0, -1,  0} },
-		{ position = { 0.5, -0.5, -0.5}, normal = { 0, -1,  0} },
-		{ position = { 0.5, -0.5,  0.5}, normal = { 0, -1,  0} },
-		{ position = {-0.5, -0.5,  0.5}, normal = { 0, -1,  0} }
+		{ position = {-0.5, -0.5,  0.5}, uv = { 0,  0} },
+		{ position = { 0.5, -0.5,  0.5}, uv = { 1,  0} },
+		{ position = { 0.5,  0.5,  0.5}, uv = { 1,  1} },
+		{ position = {-0.5,  0.5,  0.5}, uv = { 0,  1} },
+		{ position = { 0.5, -0.5, -0.5}, uv = { 0,  0} },
+		{ position = {-0.5, -0.5, -0.5}, uv = { 1,  0} },
+		{ position = {-0.5,  0.5, -0.5}, uv = { 1,  1} },
+		{ position = { 0.5,  0.5, -0.5}, uv = { 0,  1} },
+		{ position = {-0.5, -0.5, -0.5}, uv = { 0,  0} },
+		{ position = {-0.5, -0.5,  0.5}, uv = { 1,  0} },
+		{ position = {-0.5,  0.5,  0.5}, uv = { 1,  1} },
+		{ position = {-0.5,  0.5, -0.5}, uv = { 0,  1} },
+		{ position = { 0.5, -0.5,  0.5}, uv = { 0,  0} },
+		{ position = { 0.5, -0.5, -0.5}, uv = { 1,  0} },
+		{ position = { 0.5,  0.5, -0.5}, uv = { 1,  1} },
+		{ position = { 0.5,  0.5,  0.5}, uv = { 0,  1} },
+		{ position = {-0.5,  0.5,  0.5}, uv = { 0,  0} },
+		{ position = { 0.5,  0.5,  0.5}, uv = { 1,  0} },
+		{ position = { 0.5,  0.5, -0.5}, uv = { 1,  1} },
+		{ position = {-0.5,  0.5, -0.5}, uv = { 0,  1} },
+		{ position = {-0.5, -0.5, -0.5}, uv = { 0,  0} },
+		{ position = { 0.5, -0.5, -0.5}, uv = { 1,  0} },
+		{ position = { 0.5, -0.5,  0.5}, uv = { 1,  1} },
+		{ position = {-0.5, -0.5,  0.5}, uv = { 0,  1} }
 	}
 
 	cube_indices = {		
@@ -120,7 +159,6 @@ application_create :: proc() {
 		20, 21, 22, 22, 23, 20,
 	}
 
-	vk_allocator   = core.vk_allocator_get_default()
 	vertex_buffer  = core.vk_vertex_buffer_create(size_of(cube_vertices), &vk_allocator)
 	index_buffer   = core.vk_index_buffer_create(size_of(cube_indices), &vk_allocator)
 	uniform_buffer = core.vk_uniform_buffer_create(size_of(ubo), &vk_allocator) 
@@ -128,7 +166,6 @@ application_create :: proc() {
 	depth_format = .D32_SFLOAT
 	create_depth_image(core.vk_swapchain_get_extent())
 	
-	transfer_pool = core.vk_command_pool_create(.Transfer)
 	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(cube_vertices[:]), &vk_allocator)
 	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(cube_indices[:]), &vk_allocator)
 
@@ -140,24 +177,32 @@ application_create :: proc() {
 	
 	vertex_input_state := core.vk_vertex_input_state_create({binding_description}, attribute_descriptions)
 
-	vertex_module := core.vk_shader_module_create("shaders/camera.vert.spv")
+	vertex_module := core.vk_shader_module_create("shaders/texture.vert.spv")
 	defer core.vk_shader_module_destroy(vertex_module)
 	
-	fragment_module := core.vk_shader_module_create("shaders/camera.frag.spv")
+	fragment_module := core.vk_shader_module_create("shaders/texture.frag.spv")
 	defer core.vk_shader_module_destroy(fragment_module)
 	
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
 	color_blend_state := core.vk_color_blend_state_create({color_blend_attachment_state})
 
-	descriptor_pool = core.vk_descriptor_pool_create({.UNIFORM_BUFFER}, {Frames_In_Flight}, Frames_In_Flight)
+	descriptor_pool = core.vk_descriptor_pool_create({.UNIFORM_BUFFER, .COMBINED_IMAGE_SAMPLER}, {Frames_In_Flight, Frames_In_Flight}, Frames_In_Flight)
 	
 	descriptor_layout = core.vk_descriptor_set_layout_create(
-		{{
-			binding         = 0,
-			descriptorType  = .UNIFORM_BUFFER,
-			descriptorCount = 1,
-			stageFlags      = {.VERTEX},
-		}},
+		{
+			{
+				binding         = 0,
+				descriptorType  = .UNIFORM_BUFFER,
+				descriptorCount = 1,
+				stageFlags      = {.VERTEX},
+			},
+			{
+				binding         = 1,
+				descriptorType  = .COMBINED_IMAGE_SAMPLER,
+				descriptorCount = 1,
+				stageFlags      = {.FRAGMENT}
+			}
+		},
 	)
 
 	descriptor_layouts: [Frames_In_Flight]vk.DescriptorSetLayout
@@ -191,14 +236,6 @@ application_create :: proc() {
 
 application_run :: proc() {	
 	using application
-
-	data: [3*3*4]u8 = {
-		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
-		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
-		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
-	}
-	
-	image := core.vk_texture_image_create(.OPTIMAL, {3, 3, 1}, .R8G8B8A8_SRGB, &vk_allocator)
 
 	dt: f64
 	rotation: f32
@@ -306,6 +343,7 @@ application_run :: proc() {
 		core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
 		core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
 		core.vk_descriptor_set_update_uniform_buffer(descriptor_sets[frame], 0, &uniform_buffer)
+		core.vk_descriptor_set_update_image(descriptor_sets[frame], 1, &image, sampler)
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {vertex_buffer.handle})
 		core.vk_command_index_buffer_bind(command_buffers[frame], index_buffer.handle, .UINT16)
 		core.vk_command_draw_indexed(command_buffers[frame], u32(len(cube_indices)))
@@ -336,6 +374,8 @@ application_run :: proc() {
 		end = time.tick_now()
 	}	
 	
+	core.vk_sampler_destroy(sampler)
+	core.vk_image_destroy(&image)
 	core.vk_image_destroy(&depth_image)
 	core.vk_command_buffer_destroy(command_buffers)
 	core.vk_command_pool_destroy(graphics_pool)

@@ -351,6 +351,35 @@ vk_descriptor_set_update_uniform_buffer :: proc(
 	vk.UpdateDescriptorSets(vk_context.device.logical, 1, &write_desriptor_set, 0, nil)
 }
 
+vk_descriptor_set_update_image :: proc(
+	descriptor_set: vk.DescriptorSet,
+	binding:        u32,
+	image:          ^VK_Image,
+	sampler:        vk.Sampler,
+	offset:         vk.DeviceSize = 0,     
+	array_element:  u32           = 0
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	descriptor_image_info: vk.DescriptorImageInfo = {
+		sampler     = sampler,
+		imageView   = image.view,
+		imageLayout = .SHADER_READ_ONLY_OPTIMAL,
+	}
+
+	write_descriptor_set: vk.WriteDescriptorSet = {
+		sType           = .WRITE_DESCRIPTOR_SET,
+		dstSet          = descriptor_set,
+		dstBinding      = binding,
+		dstArrayElement = array_element,
+		descriptorCount = 1,
+		descriptorType  = .COMBINED_IMAGE_SAMPLER,
+		pImageInfo      = &descriptor_image_info
+	}
+	vk.UpdateDescriptorSets(vk_context.device.logical, 1, &write_descriptor_set, 0, nil)
+}
+
 vk_shader_stage_state_create :: proc(
 	stage:  vk.ShaderStageFlags = {},
 	module: vk.ShaderModule     = 0,
@@ -825,6 +854,62 @@ vk_texture_image_create :: proc(
 		mip_levels,
 		array_layers
 	)
+}
+
+vk_sampler_create :: proc(
+	mipmap_mode:              vk.SamplerMipmapMode  = .LINEAR,
+	mip_lod_bias:             f32                   = 0,
+	min_lod:                  f32                   = 0,
+	max_lod:                  f32                   = 0,
+	mag_filter:               vk.Filter             = .LINEAR,
+	min_filter:               vk.Filter             = .LINEAR,
+	address_mode_u:           vk.SamplerAddressMode = .REPEAT,
+	address_mode_v:           vk.SamplerAddressMode = .REPEAT,
+	address_mode_w:           vk.SamplerAddressMode = .REPEAT,
+	anisotropy_enable:        b32                   = false,
+	max_anisotropy:           f32                   = 0,
+	border_color:             vk.BorderColor        = .INT_OPAQUE_BLACK,
+	unnormalized_coordinates: b32                   = false,
+	compare_enable:           b32                   = false,
+	compare_op:               vk.CompareOp          = .ALWAYS,
+	flags:                    vk.SamplerCreateFlags = {},
+) -> (
+	sampler: vk.Sampler
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	sampler_create_info: vk.SamplerCreateInfo = {
+		sType                   = .SAMPLER_CREATE_INFO,
+		flags                   = flags,
+		magFilter               = mag_filter,
+		minFilter               = min_filter,
+		mipmapMode              = mipmap_mode,
+		addressModeU            = address_mode_u,
+		addressModeV            = address_mode_v,
+		addressModeW            = address_mode_w,
+		mipLodBias              = mip_lod_bias,
+		anisotropyEnable        = anisotropy_enable,
+		maxAnisotropy           = max_anisotropy,
+		compareEnable           = compare_enable,
+		compareOp               = compare_op,
+		minLod                  = min_lod,
+		maxLod                  = max_lod,
+		borderColor             = border_color,
+		unnormalizedCoordinates = unnormalized_coordinates,
+	}
+	vk_warn(vk.CreateSampler(vk_context.device.logical, &sampler_create_info, nil, &sampler))
+
+	return sampler
+}
+
+vk_sampler_destroy :: proc(
+	sampler: vk.Sampler
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	vk.DestroySampler(vk_context.device.logical, sampler, nil)
 }
 
 vk_rendering_info_create :: proc(
