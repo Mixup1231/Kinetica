@@ -51,7 +51,7 @@ VK_Command_Pool :: struct {
 }
 
 VK_Command_Buffer :: struct {
-	handle: vk.CommandBuffer,
+	handle:       vk.CommandBuffer,
 	command_pool: VK_Command_Pool,
 }
 
