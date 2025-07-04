@@ -63,13 +63,14 @@ VK_Buffer :: struct {
 }
 
 VK_Image :: struct {
-	handle:       vk.Image,
-	view:         vk.ImageView,
-	format:       vk.Format,
-	extent:       vk.Extent3D,
-	size:         vk.DeviceSize,
-	allocation:   VK_Allocation,
-	vk_allocator: ^VK_Allocator,
+	handle:            vk.Image,
+	view:              vk.ImageView,
+	format:            vk.Format,
+	extent:            vk.Extent3D,
+	size:              vk.DeviceSize,
+	subresource_range: vk.ImageSubresourceRange,
+	allocation:        VK_Allocation,
+	vk_allocator:      ^VK_Allocator,
 }
 
 vk_allocate_default :: proc(
@@ -703,6 +704,14 @@ vk_image_create :: proc(
 
 	vk.BindImageMemory(vk_context.device.logical, image.handle, image.allocation.handle, image.allocation.offset)
 
+	image.subresource_range = {
+		aspectMask     = aspect_mask,
+		baseMipLevel   = 0,
+		levelCount     = mip_levels,
+		baseArrayLayer = 0,
+		layerCount     = array_layers,
+	}
+
 	image_view_create_info: vk.ImageViewCreateInfo = {
 		sType    = .IMAGE_VIEW_CREATE_INFO,
 		image    = image.handle,
@@ -714,13 +723,7 @@ vk_image_create :: proc(
 			b = .IDENTITY,
 			a = .IDENTITY,
 		},
-		subresourceRange = {
-			aspectMask     = aspect_mask,
-			baseMipLevel   = 0,
-			levelCount     = mip_levels,
-			baseArrayLayer = 0,
-			layerCount     = array_layers,
-		}
+		subresourceRange = image.subresource_range
 	}
 	vk_warn(vk.CreateImageView(vk_context.device.logical, &image_view_create_info, nil, &image.view))
 	
@@ -1752,19 +1755,15 @@ vk_buffer_copy_buffer :: proc(
 	ensure(src_buffer != nil)
 	ensure(dst_buffer != nil)
 	
-	command_buffer := vk_command_buffer_create(command_pool)
-
 	copy_region: vk.BufferCopy = {
 		size      = size,
 		srcOffset = 0,
 		dstOffset = 0
 	}
 
-	vk_command_buffer_begin(command_buffer)
+	command_buffer := vk_command_buffer_begin_single(command_pool)
 	vk.CmdCopyBuffer(command_buffer.handle, src_buffer.handle, dst_buffer.handle, 1, &copy_region)
-	vk_command_buffer_end(command_buffer)
-	vk_queue_submit(command_buffer)
-	vk_command_buffer_destroy(command_buffer)
+	vk_command_buffer_end_single(command_buffer)
 }
 
 // TODO(Mitchell): Improve abstraction
@@ -1796,7 +1795,7 @@ vk_buffer_copy_staged :: proc(
 		{},
 		&data
 	)
-	mem.copy(data, buffer_data, int(staging_buffer.size))
+	mem.copy(data, buffer_data, int(buffer.size))
 	vk.UnmapMemory(vk_context.device.logical, staging_buffer.allocation.handle)
 
 	vk_buffer_copy_buffer(command_pool, &staging_buffer, buffer, buffer.size)
@@ -1824,4 +1823,61 @@ vk_buffer_copy_mapped :: proc(
 		}
 		vk_warn(vk.FlushMappedMemoryRanges(vk_context.device.logical, 1, &mapped_memory_range))
 	}
+}
+
+vk_image_copy_buffer :: proc(
+	command_pool:       VK_Command_Pool,
+	image:              ^VK_Image,
+	buffer:             ^VK_Buffer,
+	subresource_layers: vk.ImageSubresourceLayers = {{.COLOR}, 0, 0, 1}
+) {
+	ensure(image != nil)
+	ensure(buffer != nil)
+
+	buffer_image_copy: vk.BufferImageCopy = {
+		bufferOffset = buffer.allocation.offset,
+		imageSubresource = subresource_layers,
+		imageOffset = {0, 0, 0},
+		imageExtent = image.extent,
+	}
+
+	command_buffer := vk_command_buffer_begin_single(command_pool)
+	vk.CmdCopyBufferToImage(command_buffer.handle, buffer.handle, image.handle, .TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy)
+	vk_command_buffer_end_single(command_buffer)
+}
+
+vk_image_copy_staged :: proc(
+	command_pool:       VK_Command_Pool,
+	image:              ^VK_Image,
+	image_data:         rawptr,
+	vk_allocator:       ^VK_Allocator,
+	subresource_layers: vk.ImageSubresourceLayers = {{.COLOR}, 0, 0, 1}
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(image != nil)
+	ensure(image_data != nil)
+	ensure(vk_allocator != nil)
+
+	staging_buffer := vk_buffer_create(
+		image.size,
+		{.TRANSFER_SRC},
+		.Toggle,
+		vk_allocator,
+		{.HOST_VISIBLE, .HOST_COHERENT},
+	)
+
+	data: rawptr
+	vk.MapMemory(vk_context.device.logical,
+		staging_buffer.allocation.handle,
+		staging_buffer.allocation.offset,
+		staging_buffer.size,
+		{},
+		&data
+	)
+	mem.copy(data, image_data, int(image.size))
+	vk.UnmapMemory(vk_context.device.logical, staging_buffer.allocation.handle)
+
+	vk_image_copy_buffer(command_pool, image, &staging_buffer, subresource_layers)
+	vk_buffer_destroy(&staging_buffer)
 }
