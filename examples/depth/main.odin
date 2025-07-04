@@ -25,9 +25,9 @@ Application :: struct {
 	vk_allocator:      core.VK_Allocator,
 	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
-	graphics_pool:     vk.CommandPool,
-	transfer_pool:     vk.CommandPool,
-	command_buffers:   []vk.CommandBuffer,
+	graphics_pool:     core.VK_Command_Pool,
+	transfer_pool:     core.VK_Command_Pool,
+	command_buffers:   []core.VK_Command_Buffer,
 	image_available:   []vk.Semaphore,
 	render_finished:   []vk.Semaphore,
 	block_until:       []vk.Fence,
@@ -293,8 +293,7 @@ application_run :: proc() {
 		
 		core.vk_command_buffer_end(command_buffers[frame])
 
-		core.vk_submit_to_queue(
-			.Graphics,
+		core.vk_queue_submit(
 			command_buffers[frame],
 			render_finished[index],
 			image_available[frame],
@@ -308,7 +307,7 @@ application_run :: proc() {
 	}	
 	
 	core.vk_image_destroy(&depth_image)
-	core.vk_command_buffer_destroy(graphics_pool, command_buffers)
+	core.vk_command_buffer_destroy(command_buffers)
 	core.vk_command_pool_destroy(graphics_pool)
 	core.vk_command_pool_destroy(transfer_pool)
 	core.vk_semaphore_destroy(image_available)

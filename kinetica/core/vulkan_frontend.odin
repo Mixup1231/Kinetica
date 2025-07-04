@@ -8,11 +8,7 @@ import "core:reflect"
 import vk "vendor:vulkan"
 
 // TODO(Mitchell):
-// Create VK_Tracker_Allocator
 // Create VK_Graphics_Pipeline
-// Create VK_Index_Buffer
-// Create VK_Vertex_Buffer
-// Create depth stencil rendering attachment create
 // Create stencil rendering attachment create
 
 VK_Queue_Types :: distinct bit_set[VK_Queue_Type]
@@ -49,6 +45,16 @@ VK_Allocator :: struct {
 	deallocate: proc(^VK_Allocator, ^VK_Allocation),
 }
 
+VK_Command_Pool :: struct {
+	handle:     vk.CommandPool,
+	queue_type: VK_Queue_Type,
+}
+
+VK_Command_Buffer :: struct {
+	handle: vk.CommandBuffer,
+	command_pool: VK_Command_Pool,
+}
+
 VK_Buffer :: struct {
 	handle:       vk.Buffer,
 	size:         vk.DeviceSize,
@@ -60,6 +66,8 @@ VK_Image :: struct {
 	handle:       vk.Image,
 	view:         vk.ImageView,
 	format:       vk.Format,
+	extent:       vk.Extent3D,
+	size:         vk.DeviceSize,
 	allocation:   VK_Allocation,
 	vk_allocator: ^VK_Allocator,
 }
@@ -302,14 +310,14 @@ vk_descriptor_set_destroy_slice :: proc(
 }
 
 vk_command_descriptor_set_bind :: proc(
-	command_buffer:  vk.CommandBuffer,
+	command_buffer:  VK_Command_Buffer,
 	pipeline_layout: vk.PipelineLayout,
 	bind_point:      vk.PipelineBindPoint,
 	descriptor_set:  vk.DescriptorSet
 ) {
 	descriptor_set := descriptor_set
 
-	vk.CmdBindDescriptorSets(command_buffer, bind_point, pipeline_layout, 0, 1, &descriptor_set, 0, nil)
+	vk.CmdBindDescriptorSets(command_buffer.handle, bind_point, pipeline_layout, 0, 1, &descriptor_set, 0, nil)
 }
 
 // NOTE(Mitchell): Could abstract into VK_Descriptor_Set
@@ -639,10 +647,13 @@ vk_image_create :: proc(
 	ensure(vk_allocator != nil)
 	
 	image.format       = format
+	image.extent       = extent
 	image.vk_allocator = vk_allocator
 	
-	i: u32
 	queue_indices: [len(VK_Queue_Type)]u32
+	for &index in queue_indices do index = max(u32)
+	
+	i: u32
 	for queue in queues {
 		stored: bool
 		for index in queue_indices do if index == vk_context.device.queue_indices[queue] do stored = true
@@ -672,6 +683,7 @@ vk_image_create :: proc(
 	
 	memory_requirements: vk.MemoryRequirements
 	vk.GetImageMemoryRequirements(vk_context.device.logical, image.handle, &memory_requirements)
+	image.size = memory_requirements.size
 
 	memory_type_index := vk_memory_type_find_index(vk_context.device.physical, {.DEVICE_LOCAL}, memory_requirements.memoryTypeBits)
 	ensure(memory_type_index != nil)
@@ -750,6 +762,49 @@ vk_depth_image_create :: proc(
 	ensure(vk_context.device.initialised)
 	ensure(vk_allocator != nil)
 	ensure(.DEPTH in aspect_mask)
+	
+	return vk_image_create(
+		format,
+		tiling,
+		extent,
+		usage,
+		aspect_mask,
+		vk_allocator,
+		samples,
+		image_type,
+		view_type,
+		sharing_mode,
+		queues,
+		flags,
+		mip_levels,
+		array_layers
+	)
+}
+
+vk_texture_image_create :: proc(
+	tiling:       vk.ImageTiling,
+	extent:       vk.Extent3D,
+	format:       vk.Format,
+	vk_allocator: ^VK_Allocator,
+	usage:        vk.ImageUsageFlags  = {.TRANSFER_DST, .SAMPLED},
+	aspect_mask:  vk.ImageAspectFlags = {.COLOR},
+	samples:      vk.SampleCountFlags = {._1},
+	image_type:   vk.ImageType        = .D2,
+	view_type:    vk.ImageViewType    = .D2,
+	sharing_mode: vk.SharingMode      = .EXCLUSIVE,
+	queues:       VK_Queue_Types      = {},
+	flags:        vk.ImageCreateFlags = {},
+	mip_levels:   u32                 = 1,
+	array_layers: u32                 = 1,
+) -> (
+	depth_image: VK_Image
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	ensure(vk_allocator != nil)
+	ensure(.COLOR in aspect_mask)
+	ensure(.TRANSFER_DST in usage)
+	ensure(.SAMPLED in usage)
 	
 	return vk_image_create(
 		format,
@@ -852,19 +907,21 @@ vk_graphics_pipeline_destroy :: proc(
 }
 
 vk_command_graphics_pipeline_bind :: #force_inline proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	pipeline:       vk.Pipeline
 ) {
-	vk.CmdBindPipeline(command_buffer, .GRAPHICS, pipeline)
+	vk.CmdBindPipeline(command_buffer.handle, .GRAPHICS, pipeline)
 }
 
 vk_command_pool_create :: proc(
 	queue_type: VK_Queue_Type
 ) -> (
-	command_pool: vk.CommandPool
+	command_pool: VK_Command_Pool
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
+
+	command_pool.queue_type = queue_type
 
 	command_pool_create_info: vk.CommandPoolCreateInfo = {
 		sType            = .COMMAND_POOL_CREATE_INFO,
@@ -872,18 +929,18 @@ vk_command_pool_create :: proc(
 		queueFamilyIndex = vk_context.device.queue_indices[queue_type]
 	}
 	
-	vk_warn(vk.CreateCommandPool(vk_context.device.logical, &command_pool_create_info, nil, &command_pool))
+	vk_warn(vk.CreateCommandPool(vk_context.device.logical, &command_pool_create_info, nil, &command_pool.handle))
 
 	return command_pool
 }
 
 vk_command_pool_destroy :: proc(
-	command_pool: vk.CommandPool
+	command_pool: VK_Command_Pool
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
-	vk.DestroyCommandPool(vk_context.device.logical, command_pool, nil)
+	vk.DestroyCommandPool(vk_context.device.logical, command_pool.handle, nil)
 }
 
 vk_command_buffer_create :: proc {
@@ -892,47 +949,52 @@ vk_command_buffer_create :: proc {
 }
 
 vk_command_buffer_create_single :: proc(
-	command_pool: vk.CommandPool,
+	command_pool: VK_Command_Pool,
 	level:        vk.CommandBufferLevel = .PRIMARY
 ) -> (
-	command_buffer: vk.CommandBuffer
+	command_buffer: VK_Command_Buffer
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
-	ensure(command_pool != 0)
+	ensure(command_pool.handle != 0)
 
+	command_buffer.command_pool = command_pool
+	
 	allocate_info: vk.CommandBufferAllocateInfo = {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
-		commandPool        = command_pool,
+		commandPool        = command_pool.handle,
 		commandBufferCount = 1,
 		level              = level
 	}
-	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, &command_buffer))
+	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, &command_buffer.handle))
 
 	return command_buffer
 }
 
 vk_command_buffer_create_slice :: proc(
-	command_pool: vk.CommandPool,
+	command_pool: VK_Command_Pool,
 	level:        vk.CommandBufferLevel = .PRIMARY,
 	count:        u32,
 	allocator := context.allocator
 ) -> (
-	command_buffers: []vk.CommandBuffer
+	command_buffers: []VK_Command_Buffer
 ) {
 	context.allocator = allocator
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
-	ensure(command_pool != 0)
+	ensure(command_pool.handle != 0)
 
 	allocate_info: vk.CommandBufferAllocateInfo = {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
-		commandPool        = command_pool,
-		commandBufferCount = count,
+		commandPool        = command_pool.handle,
+		commandBufferCount = 1,
 		level              = level
 	}
-	command_buffers = make([]vk.CommandBuffer, count)
-	vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, raw_data(command_buffers)))
+	command_buffers = make([]VK_Command_Buffer, count)
+	for &command_buffer in command_buffers {
+		command_buffer.command_pool = command_pool
+		vk_warn(vk.AllocateCommandBuffers(vk_context.device.logical, &allocate_info, &command_buffer.handle))
+	}
 
 	return command_buffers
 }
@@ -943,49 +1005,66 @@ vk_command_buffer_destroy :: proc {
 }
 
 vk_command_buffer_destroy_single :: proc(
-	command_pool:   vk.CommandPool,
-	command_buffer: vk.CommandBuffer
+	command_buffer: VK_Command_Buffer
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 
 	command_buffer := command_buffer
 	
-	vk.FreeCommandBuffers(vk_context.device.logical, command_pool, 1, &command_buffer)
+	vk.FreeCommandBuffers(vk_context.device.logical, command_buffer.command_pool.handle, 1, &command_buffer.handle)
 }
 
 vk_command_buffer_destroy_slice :: proc(
-	command_pool:   vk.CommandPool,
-	command_buffers: []vk.CommandBuffer
+	command_buffers: []VK_Command_Buffer
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.device.initialised)
 	
-	vk.FreeCommandBuffers(vk_context.device.logical, command_pool, u32(len(command_buffers)), raw_data(command_buffers))
+	for &command_buffer in command_buffers do vk.FreeCommandBuffers(vk_context.device.logical, command_buffer.command_pool.handle, 1, &command_buffer.handle)
 	delete(command_buffers)
 }
 
 vk_command_buffer_reset :: proc(
-	command_buffer: vk.CommandBuffer
+	command_buffer: VK_Command_Buffer
 ) {
-	vk_warn(vk.ResetCommandBuffer(command_buffer, {.RELEASE_RESOURCES}))
+	vk_warn(vk.ResetCommandBuffer(command_buffer.handle, {.RELEASE_RESOURCES}))
 }
 
 vk_command_buffer_begin :: proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	flags:          vk.CommandBufferUsageFlags = {.ONE_TIME_SUBMIT}
 ) {
 	begin_info: vk.CommandBufferBeginInfo = {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
 		flags = flags
 	}
-	vk_warn(vk.BeginCommandBuffer(command_buffer, &begin_info))
+	vk_warn(vk.BeginCommandBuffer(command_buffer.handle, &begin_info))
 }
 
 vk_command_buffer_end :: proc(
-	command_buffer: vk.CommandBuffer
+	command_buffer: VK_Command_Buffer
 ) {
-	vk_warn(vk.EndCommandBuffer(command_buffer))
+	vk_warn(vk.EndCommandBuffer(command_buffer.handle))
+}
+
+vk_command_buffer_begin_single :: proc(
+	command_pool: VK_Command_Pool
+) -> (
+	command_buffer: VK_Command_Buffer
+) {
+	command_buffer = vk_command_buffer_create(command_pool)
+	vk_command_buffer_begin(command_buffer, {.ONE_TIME_SUBMIT})
+
+	return command_buffer
+}
+
+vk_command_buffer_end_single :: proc(
+	command_buffer: VK_Command_Buffer
+) {
+	vk_command_buffer_end(command_buffer)
+	vk_queue_submit(command_buffer)
+	vk_command_buffer_destroy(command_buffer)
 }
 
 vk_semaphore_create :: proc {
@@ -1160,9 +1239,8 @@ vk_swapchain_get_next_image_index :: proc(
 	}
 }
 
-vk_submit_to_queue :: proc(
-	queue_type:      VK_Queue_Type,
-	command_buffer:  vk.CommandBuffer,
+vk_queue_submit :: proc(
+	command_buffer:  VK_Command_Buffer,
 	signal_finished: vk.Semaphore          = 0,
 	wait_for:        vk.Semaphore          = 0,
 	wait_for_stages: vk.PipelineStageFlags = {},
@@ -1176,7 +1254,7 @@ vk_submit_to_queue :: proc(
 	submit_info: vk.SubmitInfo = {
 		sType              = .SUBMIT_INFO,
 		commandBufferCount = 1,
-		pCommandBuffers    = &command_buffer
+		pCommandBuffers    = &command_buffer.handle
 	}
 
 	if signal_finished != 0 {
@@ -1195,11 +1273,11 @@ vk_submit_to_queue :: proc(
 
 	if block_until != 0 {
 		block_until := block_until
-		vk_warn(vk.QueueSubmit(vk_context.device.queues[queue_type], 1, &submit_info, block_until))
+		vk_warn(vk.QueueSubmit(vk_context.device.queues[command_buffer.command_pool.queue_type], 1, &submit_info, block_until))
 		vk_warn(vk.WaitForFences(vk_context.device.logical, 1, &block_until, true, max(u64)))
 	} else {
-		vk_warn(vk.QueueSubmit(vk_context.device.queues[queue_type], 1, &submit_info, 0))
-		vk_warn(vk.QueueWaitIdle(vk_context.device.queues[queue_type]))
+		vk_warn(vk.QueueSubmit(vk_context.device.queues[command_buffer.command_pool.queue_type], 1, &submit_info, 0))
+		vk_warn(vk.QueueWaitIdle(vk_context.device.queues[command_buffer.command_pool.queue_type]))
 	}
 }
 
@@ -1240,17 +1318,17 @@ vk_present :: proc(
 }
 
 vk_command_viewport_set :: proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	viewports:      []vk.Viewport
 ) {
-	vk.CmdSetViewport(command_buffer, 0, u32(len(viewports)), raw_data(viewports))
+	vk.CmdSetViewport(command_buffer.handle, 0, u32(len(viewports)), raw_data(viewports))
 }
 
 vk_command_scissor_set :: proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	scissors:       []vk.Rect2D
 ) {
-	vk.CmdSetScissor(command_buffer, 0, u32(len(scissors)), raw_data(scissors))
+	vk.CmdSetScissor(command_buffer.handle, 0, u32(len(scissors)), raw_data(scissors))
 }
 
 vk_swapchain_get_image :: proc(
@@ -1296,7 +1374,7 @@ vk_swapchain_get_extent :: proc() -> (
 }
 
 vk_command_image_barrier :: proc(
-	command_buffer:    vk.CommandBuffer,
+	command_buffer:    VK_Command_Buffer,
 	image:             vk.Image,
 	src_access_mask:   vk.AccessFlags           = {},
 	dst_access_mask:   vk.AccessFlags           = {},
@@ -1319,7 +1397,7 @@ vk_command_image_barrier :: proc(
 	}
 
 	vk.CmdPipelineBarrier(
-		command_buffer,
+		command_buffer.handle,
 		src_stage_mask,
 		dst_stage_mask,
 		{},
@@ -1330,30 +1408,30 @@ vk_command_image_barrier :: proc(
 }
 
 vk_command_draw :: #force_inline proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	vertex_count:   u32,
 	instance_count: u32 = 1,
 	first_vertex:   u32 = 0,
 	first_instance: u32 = 0
 ) {
-	vk.CmdDraw(command_buffer, vertex_count, instance_count, first_vertex, first_instance)
+	vk.CmdDraw(command_buffer.handle, vertex_count, instance_count, first_vertex, first_instance)
 }
 
 vk_command_draw_indexed :: #force_inline proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	index_count:    u32,
 	instance_count: u32 = 1,
 	first_index:    u32 = 0,
 	vertex_offset:  i32 = 0,
 	first_instance: u32 = 0
 ) {
-	vk.CmdDrawIndexed(command_buffer, index_count, instance_count, first_index, vertex_offset, first_instance)
+	vk.CmdDrawIndexed(command_buffer.handle, index_count, instance_count, first_index, vertex_offset, first_instance)
 }
 
 vk_command_end_rendering :: #force_inline proc(
-	command_buffer: vk.CommandBuffer
+	command_buffer: VK_Command_Buffer
 ) {
-	vk.CmdEndRendering(command_buffer)
+	vk.CmdEndRendering(command_buffer.handle)
 }
 
 vk_color_attachment_create :: proc(
@@ -1413,7 +1491,7 @@ vk_depth_attachment_create :: proc(
 }
 
 vk_command_begin_rendering :: proc(
-	command_buffer:     vk.CommandBuffer,
+	command_buffer:     VK_Command_Buffer,
 	render_area:        vk.Rect2D,
 	layer_count:        u32                          = 1,
 	view_mask:          u32                          = 0,
@@ -1431,7 +1509,7 @@ vk_command_begin_rendering :: proc(
 		pStencilAttachment   = stencil_attachment,
 	}
 
-	vk.CmdBeginRendering(command_buffer, &rendering_info)
+	vk.CmdBeginRendering(command_buffer.handle, &rendering_info)
 }
 
 // NOTE(Mitchell): We don't support sparse binding so locations must be contiguous
@@ -1498,8 +1576,10 @@ vk_buffer_create :: proc(
 
 	buffer.size = size
 
-	i: u32
 	queue_indices: [len(VK_Queue_Type)]u32
+	for &index in queue_indices do index = max(u32)
+	
+	i: u32
 	for queue in queues {
 		stored: bool
 		for index in queue_indices do if index == vk_context.device.queue_indices[queue] do stored = true 
@@ -1614,11 +1694,11 @@ vk_vertex_buffer_create :: proc(
 }
 
 vk_command_vertex_buffers_bind :: #force_inline proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	vertex_buffers: []vk.Buffer,
 	offsets:        []vk.DeviceSize = {0}
 ) {
-	vk.CmdBindVertexBuffers(command_buffer, 0, u32(len(vertex_buffers)), raw_data(vertex_buffers), raw_data(offsets))
+	vk.CmdBindVertexBuffers(command_buffer.handle, 0, u32(len(vertex_buffers)), raw_data(vertex_buffers), raw_data(offsets))
 }
 
 vk_index_buffer_create :: proc(
@@ -1647,12 +1727,12 @@ vk_index_buffer_create :: proc(
 }
 
 vk_command_index_buffer_bind :: #force_inline proc(
-	command_buffer: vk.CommandBuffer,
+	command_buffer: VK_Command_Buffer,
 	index_buffer:   vk.Buffer,
 	index_type:     vk.IndexType  = .UINT32,
 	offset:         vk.DeviceSize = 0,
 ) {
-	vk.CmdBindIndexBuffer(command_buffer, index_buffer, offset, index_type)
+	vk.CmdBindIndexBuffer(command_buffer.handle, index_buffer, offset, index_type)
 }
 
 vk_buffer_copy :: proc {
@@ -1664,7 +1744,7 @@ vk_buffer_copy :: proc {
 // TODO(Mitchell): Improve abstraction
 // NOTE(Mitchell): Command pool must be created with transfer queue support
 vk_buffer_copy_buffer :: proc(
-	command_pool: vk.CommandPool,
+	command_pool: VK_Command_Pool,
 	src_buffer:   ^VK_Buffer,
 	dst_buffer:   ^VK_Buffer,
 	size:         vk.DeviceSize
@@ -1681,16 +1761,16 @@ vk_buffer_copy_buffer :: proc(
 	}
 
 	vk_command_buffer_begin(command_buffer)
-	vk.CmdCopyBuffer(command_buffer, src_buffer.handle, dst_buffer.handle, 1, &copy_region)
+	vk.CmdCopyBuffer(command_buffer.handle, src_buffer.handle, dst_buffer.handle, 1, &copy_region)
 	vk_command_buffer_end(command_buffer)
-	vk_submit_to_queue(.Transfer, command_buffer)
-	vk_command_buffer_destroy(command_pool, command_buffer)
+	vk_queue_submit(command_buffer)
+	vk_command_buffer_destroy(command_buffer)
 }
 
 // TODO(Mitchell): Improve abstraction
 // NOTE(Mitchell): Command pool must be created with transfer queue support
 vk_buffer_copy_staged :: proc(
-	command_pool: vk.CommandPool,
+	command_pool: VK_Command_Pool,
 	buffer:       ^VK_Buffer,
 	buffer_data:  rawptr,
 	vk_allocator: ^VK_Allocator
