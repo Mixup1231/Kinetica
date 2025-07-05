@@ -1,7 +1,12 @@
 package obj_loader
 
+// TODO(Mitchell):
+// Add way to retrieve vertex data
+// Triangulate polygon faces
+// Add error checking
+// Add material support
+
 import "core:os"
-import "core:fmt"
 import "core:strings"
 import "core:strconv"
 

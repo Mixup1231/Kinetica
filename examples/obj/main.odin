@@ -12,7 +12,9 @@ main :: proc() {
 	fmt.println(file.normals)
 	fmt.println(file.texture_coordinates)
 	
-	for _, object in file.objects {
+	for name, object in file.objects {
+		fmt.println(name)
+		
 		for _, group in object.groups {
 			fmt.println(group)
 		}
