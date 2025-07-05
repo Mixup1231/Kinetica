@@ -2,6 +2,7 @@ package main
 
 import "core:log"
 import "core:time"
+import "core:math"
 import la "core:math/linalg"
 
 import "../../kinetica/core"
@@ -18,11 +19,14 @@ Ubo :: struct {
 }
 
 Frames_In_Flight : u32 : 3
+Image_Width :: 512
+Image_Height :: 512
 
 Application :: struct {
 	camera:            core.Camera_3D,
 	vk_allocator:      core.VK_Allocator,
 	sampler:           vk.Sampler,
+	data:              [Image_Width*Image_Height*4]u8, 
 	image:             core.VK_Image,
 	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
@@ -87,16 +91,10 @@ application_create :: proc() {
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
 	vk_allocator   = core.vk_allocator_get_default()
-	
-	data: [4*3*3]u8 = {
-		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
-		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
-		255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
-	}
-	
-	sampler = core.vk_sampler_create()
-	mip_levels := core.vk_extent_get_mip_levels({3, 3})
-	image = core.vk_texture_image_create(.OPTIMAL, {3, 3, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
+		
+	mip_levels := core.vk_extent_get_mip_levels({Image_Width, Image_Height})
+	sampler = core.vk_sampler_create(max_lod = f32(mip_levels))
+	image = core.vk_texture_image_create(.OPTIMAL, {Image_Width, Image_Height, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
 
 	transition := core.vk_command_buffer_begin_single(transfer_pool)
 	core.vk_command_image_barrier_handle(
@@ -110,7 +108,69 @@ application_create :: proc() {
 	)
 	core.vk_command_buffer_end_single(transition)
 
-	core.vk_image_copy_staged(transfer_pool, &image, &data[0], &vk_allocator)
+	c := complex(-0.8, 0.156)
+	zoom := 4.5
+
+	scale_x := 3.0 / zoom
+	scale_y := 2.0 / zoom
+	
+	hsv_to_rgb :: proc(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
+		hh := math.mod(h, 360.0) / 60.0;
+		i := int(hh);
+		ff := hh - f64(i);
+	
+		p := v * (1.0 - s);
+		q := v * (1.0 - s * ff);
+		t := v * (1.0 - s * (1.0 - ff));
+	
+		switch i {
+		case 0: return v, t, p;
+		case 1: return q, v, p;
+		case 2: return p, v, t;
+		case 3: return p, q, v;
+		case 4: return t, p, v;
+		case 5: return v, p, q;
+		case: return 0.0, 0.0, 0.0; // fallback
+		}
+	}
+	
+	max_iterations := 100
+	for y in 0..<Image_Height {
+		for x in 0..<Image_Width {
+			zx := (f64(x) / f64(Image_Width) - 0.5) * scale_x + real(c)
+			zy := (f64(y) / f64(Image_Height) - 0.5) * scale_y + imag(c)
+
+			i := 0
+			for zx * zx + zy * zy < 4.0 && i < max_iterations {
+				tmp := zx * zx - zy * zy + real(c)
+				zy = 2.0 * zx * zy + imag(c)
+				zx = tmp
+				i += 1
+			}
+
+			index := (y * Image_Width + x) * 4
+
+			if i == max_iterations {
+				data[index + 0] = 25
+				data[index + 1] = 25
+				data[index + 2] = 25
+			} else {
+				z_mag := math.sqrt(zx * zx + zy * zy);
+				nu := f64(i) + 1.0 - math.log2(math.log2(z_mag));
+				t := nu / f64(max_iterations);
+				
+				hue := 360.0 * t;
+				r, g, b := hsv_to_rgb(hue, 1.0, 1.0);
+				
+				data[index + 0] = u8(clamp(r * 255.0, 0.0, 255.0))
+				data[index + 1] = u8(clamp(g * 255.0, 0.0, 255.0))
+				data[index + 2] = u8(clamp(b * 255.0, 0.0, 255.0))
+			}
+			data[index + 3] = 255
+		} 
+	}
+		
+	core.vk_image_copy_staged(transfer_pool, &image, data[:], &vk_allocator)
 	
 	core.vk_image_generate_mip_maps(graphics_pool, &image)
 

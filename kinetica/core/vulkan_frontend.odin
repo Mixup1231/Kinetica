@@ -2116,7 +2116,7 @@ vk_image_copy_buffer :: proc(
 vk_image_copy_staged :: proc(
 	command_pool:       VK_Command_Pool,
 	image:              ^VK_Image,
-	image_data:         rawptr,
+	image_data:         []u8,
 	vk_allocator:       ^VK_Allocator,
 	subresource_layers: vk.ImageSubresourceLayers = {{.COLOR}, 0, 0, 1}
 ) {
@@ -2125,6 +2125,9 @@ vk_image_copy_staged :: proc(
 	ensure(image != nil)
 	ensure(image_data != nil)
 	ensure(vk_allocator != nil)
+
+	image_size := len(image_data)
+	ensure(image_size <= int(image.size))
 
 	staging_buffer := vk_buffer_create(
 		image.size,
@@ -2142,7 +2145,7 @@ vk_image_copy_staged :: proc(
 		{},
 		&data
 	)
-	mem.copy(data, image_data, int(image.size))
+	mem.copy(data, raw_data(image_data), image_size)
 	vk.UnmapMemory(vk_context.device.logical, staging_buffer.allocation.handle)
 
 	vk_image_copy_buffer(command_pool, image, &staging_buffer, subresource_layers)
