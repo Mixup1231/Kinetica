@@ -59,8 +59,7 @@ VK_Swapchain_Support_Details :: struct {
 
 VK_Swapchain :: struct {
 	handle:          vk.SwapchainKHR,
-	images:          []vk.Image,
-	image_views:     []vk.ImageView,
+	images:          []VK_Image,
 	attributes:      VK_Swapchain_Attributes,
 	support_details: VK_Swapchain_Support_Details,
 	on_recreation:   proc(vk.Extent2D),
@@ -257,10 +256,9 @@ vk_destroy :: proc() {
 	vk_context.swapchain.initialised = false
 	vk_context.swapchain.support_details.initialised = false
 	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
-	for image_view in vk_context.swapchain.image_views do vk.DestroyImageView(vk_context.device.logical, image_view, nil)
+	for &image in vk_context.swapchain.images do vk.DestroyImageView(vk_context.device.logical, image.view, nil)
 	
 	delete(vk_context.swapchain.images)
-	delete(vk_context.swapchain.image_views)
 	delete(vk_context.swapchain.support_details.formats)
 	delete(vk_context.swapchain.support_details.present_modes)
 
@@ -578,19 +576,16 @@ vk_swapchain_create :: proc(
 
 	swapchain := &vk_context.swapchain
 	if swapchain.images == nil {
-		swapchain.images = make([]vk.Image, image_count)
+		swapchain.images = make([]VK_Image, image_count)
 	} else {
 		ensure(u32(len(swapchain.images)) == image_count)
 	}
-	
-	if swapchain.image_views == nil {
-		swapchain.image_views = make([]vk.ImageView, image_count)
-	} else {
-		ensure(u32(len(swapchain.image_views)) == image_count)
-	}
 
-	vk_fatal(vk.GetSwapchainImagesKHR(vk_context.device.logical, swapchain.handle, &image_count, raw_data(swapchain.images)))
-	for image, i in swapchain.images {
+	temporary_images := make([]vk.Image, image_count)
+	defer delete(temporary_images)
+
+	vk_fatal(vk.GetSwapchainImagesKHR(vk_context.device.logical, swapchain.handle, &image_count, raw_data(temporary_images)))
+	for image, i in temporary_images {		
 		image_view_create_info: vk.ImageViewCreateInfo = {
 			sType            = .IMAGE_VIEW_CREATE_INFO,
 			image            = image,
@@ -604,8 +599,13 @@ vk_swapchain_create :: proc(
 				layerCount     = 1
 			}
 		}
+		vk_fatal(vk.CreateImageView(vk_context.device.logical, &image_view_create_info, nil, &swapchain.images[i].view))
 
-		vk_fatal(vk.CreateImageView(vk_context.device.logical, &image_view_create_info, nil, &swapchain.image_views[i]))
+		stored_image := &swapchain.images[i]
+		stored_image.handle = image
+		stored_image.extent = {attributes.extent.width, attributes.extent.height, 1}
+		stored_image.format = image_view_create_info.format
+		stored_image.subresource_range = image_view_create_info.subresourceRange
 
 		log.info("Vulkan: Successfully created swapchain image-view", i+1)
 	}
@@ -618,7 +618,7 @@ vk_swapchain_destroy :: proc() {
 	ensure(vk_context.device.initialised)
 	ensure(vk_context.swapchain.initialised)
 
-	for image_view in vk_context.swapchain.image_views do vk.DestroyImageView(vk_context.device.logical, image_view, nil)
+	for &image in vk_context.swapchain.images do vk.DestroyImageView(vk_context.device.logical, image.view, nil)
 	vk.DestroySwapchainKHR(vk_context.device.logical, vk_context.swapchain.handle, nil)
 }
 

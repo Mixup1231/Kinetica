@@ -97,9 +97,9 @@ application_create :: proc() {
 	image = core.vk_texture_image_create(.OPTIMAL, {Image_Width, Image_Height, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
 
 	transition := core.vk_command_buffer_begin_single(transfer_pool)
-	core.vk_command_image_barrier_handle(
+	core.vk_command_image_barrier(
 		command_buffer  = transition,
-		image           = image.handle,
+		image           = &image,
 		new_layout      = .TRANSFER_DST_OPTIMAL,
 		dst_access_mask = {.TRANSFER_WRITE},
 		src_stage_mask  = {.TOP_OF_PIPE},
@@ -220,7 +220,7 @@ application_create :: proc() {
 	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(cube_vertices[:]), &vk_allocator)
 	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(cube_indices[:]), &vk_allocator)
 
-	swapchain_format := core.vk_swapchain_get_color_format()
+	swapchain_format := core.vk_swapchain_get_image_format()
 	rendering_info   := core.vk_rendering_info_create({swapchain_format}, depth_format) 
 
 	binding_description, attribute_descriptions := core.vk_vertex_description_create(Vertex)
@@ -336,7 +336,7 @@ application_run :: proc() {
 		core.vk_command_buffer_reset(command_buffers[frame])
 		core.vk_command_buffer_begin(command_buffers[frame])
 				
-		core.vk_command_image_barrier_handle(
+		core.vk_command_image_barrier(
 			command_buffer  = command_buffers[frame],
 			image           = core.vk_swapchain_get_image(index),
 			dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
@@ -346,9 +346,9 @@ application_run :: proc() {
 			dst_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
 		)	
 
-		core.vk_command_image_barrier_handle(
+		core.vk_command_image_barrier(
 			command_buffers[frame],
-			image             = depth_image.handle,
+			image             = &depth_image,
 			dst_access_mask   = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
 			old_layout        = .UNDEFINED,
 			new_layout        = .DEPTH_ATTACHMENT_OPTIMAL,
@@ -400,7 +400,7 @@ application_run :: proc() {
 		core.vk_command_draw_indexed(command_buffers[frame], u32(len(cube_indices)))
 		core.vk_command_end_rendering(command_buffers[frame])
 		
-		core.vk_command_image_barrier_handle(
+		core.vk_command_image_barrier(
 			command_buffer  = command_buffers[frame],
 			image           = core.vk_swapchain_get_image(index),
 			src_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},

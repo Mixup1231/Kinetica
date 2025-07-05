@@ -26,9 +26,9 @@ Application :: struct {
 	vk_allocator:      core.VK_Allocator,
 	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
-	graphics_pool:     vk.CommandPool,
-	transfer_pool:     vk.CommandPool,
-	command_buffers:   []vk.CommandBuffer,
+	graphics_pool:     core.VK_Command_Pool,
+	transfer_pool:     core.VK_Command_Pool,
+	command_buffers:   []core.VK_Command_Buffer,
 	image_available:   []vk.Semaphore,
 	render_finished:   []vk.Semaphore,
 	block_until:       []vk.Fence,
@@ -158,7 +158,7 @@ application_create :: proc() {
 	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(cube_vertices[:]), &vk_allocator)
 	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(cube_indices[:]), &vk_allocator)
 
-	swapchain_format := core.vk_swapchain_get_color_format()
+	swapchain_format := core.vk_swapchain_get_image_format()
 	rendering_info := core.vk_rendering_info_create({swapchain_format}, depth_format)
 
 	binding_description, attribute_descriptions := core.vk_vertex_description_create(Vertex)
@@ -276,7 +276,7 @@ application_run :: proc() {
 
 		core.vk_command_image_barrier(
 			command_buffers[frame],
-			image = depth_image.handle,
+			image = &depth_image,
 			dst_access_mask = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
 			old_layout = .UNDEFINED,
 			new_layout = .DEPTH_ATTACHMENT_OPTIMAL,
@@ -337,8 +337,7 @@ application_run :: proc() {
 
 		core.vk_command_buffer_end(command_buffers[frame])
 
-		core.vk_submit_to_queue(
-			.Graphics,
+		core.vk_queue_submit(
 			command_buffers[frame],
 			render_finished[index],
 			image_available[frame],
@@ -352,7 +351,7 @@ application_run :: proc() {
 	}
 
 	core.vk_image_destroy(&depth_image)
-	core.vk_command_buffer_destroy(graphics_pool, command_buffers)
+	core.vk_command_buffer_destroy(command_buffers)
 	core.vk_command_pool_destroy(graphics_pool)
 	core.vk_command_pool_destroy(transfer_pool)
 	core.vk_semaphore_destroy(image_available)

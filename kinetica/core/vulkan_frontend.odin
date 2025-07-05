@@ -68,7 +68,6 @@ VK_Image :: struct {
 	view:              vk.ImageView,
 	format:            vk.Format,
 	extent:            vk.Extent3D,
-	size:              vk.DeviceSize,
 	subresource_range: vk.ImageSubresourceRange,
 	allocation:        VK_Allocation,
 	vk_allocator:      ^VK_Allocator,
@@ -600,15 +599,6 @@ vk_dynamic_state_create :: proc(
 	return dynamic_state
 }
 
-vk_swapchain_get_color_format :: proc() -> (
-	format: vk.Format
-) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
-
-	return vk_context.swapchain.attributes.format.format
-}
-
 vk_swapchain_set_recreation_callback :: proc(
 	callback: proc(vk.Extent2D)
 ) {
@@ -722,7 +712,6 @@ vk_image_create :: proc(
 	
 	memory_requirements: vk.MemoryRequirements
 	vk.GetImageMemoryRequirements(vk_context.device.logical, image.handle, &memory_requirements)
-	image.size = memory_requirements.size
 
 	memory_type_index := vk_memory_type_find_index(vk_context.device.physical, {.DEVICE_LOCAL}, memory_requirements.memoryTypeBits)
 	ensure(memory_type_index != nil)
@@ -1564,25 +1553,46 @@ vk_command_scissor_set :: proc(
 vk_swapchain_get_image :: proc(
 	index: u32
 ) -> (
-	image: vk.Image
+	image: ^VK_Image
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.swapchain.initialised)
 	ensure(index < u32(len(vk_context.swapchain.images)))
 
-	return vk_context.swapchain.images[index]
+	return &vk_context.swapchain.images[index]
+}
+
+vk_swapchain_get_image_handle :: proc(
+	index: u32
+) -> (
+	handle: vk.Image
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+	ensure(index < u32(len(vk_context.swapchain.images)))
+
+	return vk_context.swapchain.images[index].handle
 }
 
 vk_swapchain_get_image_view :: proc(
 	index: u32
 ) -> (
-	image: vk.ImageView
+	view: vk.ImageView
 ) {
 	ensure(vk_context.initialised)
 	ensure(vk_context.swapchain.initialised)
-	ensure(index < u32(len(vk_context.swapchain.image_views)))
+	ensure(index < u32(len(vk_context.swapchain.images)))
 
-	return vk_context.swapchain.image_views[index]
+	return vk_context.swapchain.images[index].view
+}
+
+vk_swapchain_get_image_format :: proc() -> (
+	format: vk.Format
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.swapchain.initialised)
+
+	return vk_context.swapchain.images[0].format
 }
 
 vk_swapchain_get_image_count :: proc() -> (
@@ -1603,12 +1613,7 @@ vk_swapchain_get_extent :: proc() -> (
 	return vk_context.swapchain.attributes.extent
 }
 
-vk_command_image_barrier :: proc {
-	vk_command_image_barrier_struct,
-	vk_command_image_barrier_handle,
-}
-
-vk_command_image_barrier_struct :: proc(
+vk_command_image_barrier :: proc(
 	command_buffer:    VK_Command_Buffer,
 	image:             ^VK_Image,
 	src_access_mask:   vk.AccessFlags           = {},
@@ -1629,40 +1634,6 @@ vk_command_image_barrier_struct :: proc(
 		oldLayout        = old_layout,
 		newLayout        = new_layout,
 		image            = image.handle,
-		subresourceRange = subresource_range
-	}
-
-	vk.CmdPipelineBarrier(
-		command_buffer.handle,
-		src_stage_mask,
-		dst_stage_mask,
-		{},
-		0, nil,
-		0, nil,
-		1, &barrier
-	)
-}
-
-vk_command_image_barrier_handle :: proc(
-	command_buffer:    VK_Command_Buffer,
-	image:             vk.Image,
-	src_access_mask:   vk.AccessFlags           = {},
-	dst_access_mask:   vk.AccessFlags           = {},
-	old_layout:        vk.ImageLayout           = .UNDEFINED,
-	new_layout:        vk.ImageLayout           = .UNDEFINED,
-	subresource_range: vk.ImageSubresourceRange = {{.COLOR}, 0, 1, 0, 1},
-	src_stage_mask:    vk.PipelineStageFlags    = {},
-	dst_stage_mask:    vk.PipelineStageFlags    = {}
-) {
-	ensure(vk_context.initialised)
-
-	barrier: vk.ImageMemoryBarrier = {
-		sType            = .IMAGE_MEMORY_BARRIER,
-		dstAccessMask    = dst_access_mask,
-		srcAccessMask    = src_access_mask,
-		oldLayout        = old_layout,
-		newLayout        = new_layout,
-		image            = image,
 		subresourceRange = subresource_range
 	}
 
@@ -2127,10 +2098,9 @@ vk_image_copy_staged :: proc(
 	ensure(vk_allocator != nil)
 
 	image_size := len(image_data)
-	ensure(image_size <= int(image.size))
 
 	staging_buffer := vk_buffer_create(
-		image.size,
+		vk.DeviceSize(image_size),
 		{.TRANSFER_SRC},
 		.Toggle,
 		vk_allocator,
