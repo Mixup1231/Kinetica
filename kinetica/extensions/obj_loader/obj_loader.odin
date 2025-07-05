@@ -19,7 +19,7 @@ OBJ_Object :: union {
 }
 
 OBJ_File :: struct {
-	objects: [dynamic]OBJ_Object
+	objects: map[string]OBJ_Object
 }
 
 obj_load_file :: proc(
