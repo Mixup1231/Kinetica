@@ -262,23 +262,23 @@ read_file :: proc(
 			}
 			object := &file.objects[current_object]
 			object.groups[current_group] = group
-		case .Position:
-			parse_positions(tokens[1:], &file.positions)			
-		case .Normal:
-			parse_normals(tokens[1:], &file.normals)			
-		case .Texture_Coordinate:
-			parse_texture_coordinates(tokens[1:], &file.texture_coordinates)			
 		case .Face:
 			if current_object == "" {
 				set_current(&i, i_buffer[:], &current_object)
-				map_insert(&file.objects, current_object, Object{})
-				(&file.objects[current_object]).groups = make(map[string]Group)
+				object: Object = {
+					groups = make(map[string]Group)
+				}
+				file.objects[current_object] = object
 			}
 			
 			if current_group == "" {
-				set_current(&j, j_buffer[:], &current_group)				
-				map_insert(&(&file.objects[current_object]).groups, current_group, Group{})
-				(&(&file.objects[current_object]).groups[current_group]).indices = make([dynamic][3]u32)
+				set_current(&j, j_buffer[:], &current_group)
+				group: Group = {
+					indices           = make([dynamic][3]u32),
+					vertex_attributes = {}
+				}
+				object := &file.objects[current_object]
+				object.groups[current_group] = group
 			}
 			
 			for token in tokens[1:] {
@@ -286,6 +286,12 @@ read_file :: proc(
 				group := &object.groups[current_group]
 				parse_face_token(token, group)
 			}			
+		case .Position:
+			parse_positions(tokens[1:], &file.positions)			
+		case .Normal:
+			parse_normals(tokens[1:], &file.normals)			
+		case .Texture_Coordinate:
+			parse_texture_coordinates(tokens[1:], &file.texture_coordinates)			
 		}
 	}
 
