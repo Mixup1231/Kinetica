@@ -95,33 +95,24 @@ application_create :: proc() {
 	}
 	
 	sampler = core.vk_sampler_create()
-	image = core.vk_texture_image_create(.OPTIMAL, {3, 3, 1}, .R8G8B8A8_SRGB, &vk_allocator)
+	mip_levels := core.vk_extent_get_mip_levels({3, 3})
+	image = core.vk_texture_image_create(.OPTIMAL, {3, 3, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
 
 	transition := core.vk_command_buffer_begin_single(transfer_pool)
-	core.vk_command_image_barrier(
+	core.vk_command_image_barrier_handle(
 		command_buffer  = transition,
 		image           = image.handle,
 		new_layout      = .TRANSFER_DST_OPTIMAL,
 		dst_access_mask = {.TRANSFER_WRITE},
 		src_stage_mask  = {.TOP_OF_PIPE},
 		dst_stage_mask  = {.TRANSFER},
+		subresource_range = image.subresource_range
 	)
 	core.vk_command_buffer_end_single(transition)
 
 	core.vk_image_copy_staged(transfer_pool, &image, &data[0], &vk_allocator)
-
-	transition = core.vk_command_buffer_begin_single(graphics_pool)
-	core.vk_command_image_barrier(
-		command_buffer  = transition,
-		image           = image.handle,
-		old_layout      = .TRANSFER_DST_OPTIMAL,
-		new_layout      = .SHADER_READ_ONLY_OPTIMAL,
-		src_access_mask = {.TRANSFER_WRITE},
-		dst_access_mask = {.SHADER_READ},
-		src_stage_mask  = {.TRANSFER},
-		dst_stage_mask  = {.FRAGMENT_SHADER}
-	)
-	core.vk_command_buffer_end_single(transition)
+	
+	core.vk_image_generate_mip_maps(graphics_pool, &image)
 
 	cube_vertices = {	
 		{ position = {-0.5, -0.5,  0.5}, uv = { 0,  0} },
@@ -285,7 +276,7 @@ application_run :: proc() {
 		core.vk_command_buffer_reset(command_buffers[frame])
 		core.vk_command_buffer_begin(command_buffers[frame])
 				
-		core.vk_command_image_barrier(
+		core.vk_command_image_barrier_handle(
 			command_buffer  = command_buffers[frame],
 			image           = core.vk_swapchain_get_image(index),
 			dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
@@ -295,7 +286,7 @@ application_run :: proc() {
 			dst_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
 		)	
 
-		core.vk_command_image_barrier(
+		core.vk_command_image_barrier_handle(
 			command_buffers[frame],
 			image             = depth_image.handle,
 			dst_access_mask   = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
@@ -349,7 +340,7 @@ application_run :: proc() {
 		core.vk_command_draw_indexed(command_buffers[frame], u32(len(cube_indices)))
 		core.vk_command_end_rendering(command_buffers[frame])
 		
-		core.vk_command_image_barrier(
+		core.vk_command_image_barrier_handle(
 			command_buffer  = command_buffers[frame],
 			image           = core.vk_swapchain_get_image(index),
 			src_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},

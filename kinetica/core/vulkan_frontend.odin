@@ -3,6 +3,7 @@ package core
 import "core:os"
 import "core:log"
 import "core:mem"
+import "core:math"
 import "core:reflect"
 
 import vk "vendor:vulkan"
@@ -654,6 +655,14 @@ vk_image_format_has_stencil_component :: proc(
 	}
 }
 
+vk_extent_get_mip_levels :: proc(
+	extent: vk.Extent2D
+) -> (
+	mip_levels: u32
+) {
+	return u32(math.floor(math.log2(f32(max(extent.width, extent.height))))) + 1
+}
+
 vk_image_create :: proc(
 	format:       vk.Format,
 	tiling:       vk.ImageTiling,
@@ -661,13 +670,13 @@ vk_image_create :: proc(
 	usage:        vk.ImageUsageFlags,
 	aspect_mask:  vk.ImageAspectFlags,
 	vk_allocator: ^VK_Allocator,
+	mip_levels:   u32                 = 1,
 	samples:      vk.SampleCountFlags = {._1},
 	image_type:   vk.ImageType        = .D2,
 	view_type:    vk.ImageViewType    = .D2,
 	sharing_mode: vk.SharingMode      = .EXCLUSIVE,
 	queues:       VK_Queue_Types      = {},
 	flags:        vk.ImageCreateFlags = {},
-	mip_levels:   u32                 = 1,
 	array_layers: u32                 = 1,
 ) -> (
 	image: VK_Image
@@ -772,6 +781,136 @@ vk_image_destroy :: proc(
 	image.vk_allocator->deallocate(&image.allocation)
 }
 
+vk_image_generate_mip_maps :: proc(
+	command_pool: VK_Command_Pool,
+	image:        ^VK_Image,
+) {
+	ensure(vk_context.initialised)
+	ensure(vk_context.device.initialised)
+	
+	format_properties: vk.FormatProperties
+	vk.GetPhysicalDeviceFormatProperties(vk_context.device.physical, image.format, &format_properties)
+	ensure(.SAMPLED_IMAGE_FILTER_LINEAR in format_properties.optimalTilingFeatures)
+	
+	barrier: vk.ImageMemoryBarrier = {
+		sType = .IMAGE_MEMORY_BARRIER,
+		image = image.handle,
+		subresourceRange = {
+			aspectMask     = {.COLOR},
+			baseArrayLayer = 0,
+			layerCount     = 1,
+			levelCount     = 1
+		}
+	}
+	
+	transition := vk_command_buffer_begin_single(command_pool)
+
+	mip_levels := image.subresource_range.levelCount
+	mip_width:  i32 = i32(image.extent.width)
+	mip_height: i32 = i32(image.extent.height)
+
+	for i in 1..<mip_levels {
+		barrier.subresourceRange.baseMipLevel = i - 1
+		barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+		barrier.newLayout = .TRANSFER_SRC_OPTIMAL
+		barrier.srcAccessMask = {.TRANSFER_WRITE}
+		barrier.dstAccessMask = {.TRANSFER_READ}
+
+		vk.CmdPipelineBarrier(
+			transition.handle,
+			{.TRANSFER},
+			{.TRANSFER},
+			{},
+			0, nil,
+			0, nil,
+			1, &barrier
+		)
+
+		blit: vk.ImageBlit = {
+			srcOffsets = {
+				{
+					x = 0,
+					y = 0,
+					z = 0
+				},
+				{
+					x = mip_width,
+					y = mip_height,
+					z = 1
+				}
+			},
+			srcSubresource = {
+				aspectMask     = {.COLOR},
+				mipLevel       = i - 1,
+				baseArrayLayer = 0,
+				layerCount     = 1
+			},
+			dstOffsets = {
+				{
+					x = 0,
+					y = 0,
+					z = 0
+				},
+				{
+					x = mip_width / 2 if mip_width > 1 else 1,
+					y = mip_height / 2 if mip_height > 1 else 1,
+					z = 1
+				}
+			},
+			dstSubresource = {
+				aspectMask     = {.COLOR},
+				mipLevel       = i,
+				baseArrayLayer = 0,
+				layerCount     = 1
+			}
+		}
+
+		vk.CmdBlitImage(
+			transition.handle,
+			image.handle, .TRANSFER_SRC_OPTIMAL,
+			image.handle, .TRANSFER_DST_OPTIMAL,
+			1, &blit,
+			.LINEAR
+		)
+
+		barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
+		barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+		barrier.srcAccessMask = {.TRANSFER_READ}
+		barrier.dstAccessMask = {.SHADER_READ}
+
+		vk.CmdPipelineBarrier(
+			transition.handle,
+			{.TRANSFER},
+			{.FRAGMENT_SHADER},
+			{},
+			0, nil,
+			0, nil,
+			1, &barrier
+		)
+
+		if mip_width > 1 do mip_width /= 2
+		if mip_height > 1 do mip_height /= 2
+	}
+
+	barrier.subresourceRange.baseMipLevel = mip_levels - 1
+	barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+	barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+	barrier.srcAccessMask = {.TRANSFER_WRITE}
+	barrier.dstAccessMask = {.SHADER_READ}
+
+	vk.CmdPipelineBarrier(
+		transition.handle,
+		{.TRANSFER},
+		{.FRAGMENT_SHADER},
+		{},
+		0, nil,
+		0, nil,
+		1, &barrier
+	)
+
+	vk_command_buffer_end_single(transition)
+}
+
 vk_depth_image_create :: proc(
 	format:       vk.Format,
 	tiling:       vk.ImageTiling,
@@ -802,13 +941,13 @@ vk_depth_image_create :: proc(
 		usage,
 		aspect_mask,
 		vk_allocator,
+		mip_levels,
 		samples,
 		image_type,
 		view_type,
 		sharing_mode,
 		queues,
 		flags,
-		mip_levels,
 		array_layers
 	)
 }
@@ -818,6 +957,7 @@ vk_texture_image_create :: proc(
 	extent:       vk.Extent3D,
 	format:       vk.Format,
 	vk_allocator: ^VK_Allocator,
+	mip_levels:   u32                 = 1,
 	usage:        vk.ImageUsageFlags  = {.TRANSFER_DST, .SAMPLED},
 	aspect_mask:  vk.ImageAspectFlags = {.COLOR},
 	samples:      vk.SampleCountFlags = {._1},
@@ -826,7 +966,6 @@ vk_texture_image_create :: proc(
 	sharing_mode: vk.SharingMode      = .EXCLUSIVE,
 	queues:       VK_Queue_Types      = {},
 	flags:        vk.ImageCreateFlags = {},
-	mip_levels:   u32                 = 1,
 	array_layers: u32                 = 1,
 ) -> (
 	depth_image: VK_Image
@@ -837,6 +976,9 @@ vk_texture_image_create :: proc(
 	ensure(.COLOR in aspect_mask)
 	ensure(.TRANSFER_DST in usage)
 	ensure(.SAMPLED in usage)
+
+	usage := usage
+	if mip_levels > 1 do usage += {.TRANSFER_SRC}
 	
 	return vk_image_create(
 		format,
@@ -845,13 +987,13 @@ vk_texture_image_create :: proc(
 		usage,
 		aspect_mask,
 		vk_allocator,
+		mip_levels,
 		samples,
 		image_type,
 		view_type,
 		sharing_mode,
 		queues,
 		flags,
-		mip_levels,
 		array_layers
 	)
 }
@@ -1461,7 +1603,47 @@ vk_swapchain_get_extent :: proc() -> (
 	return vk_context.swapchain.attributes.extent
 }
 
-vk_command_image_barrier :: proc(
+vk_command_image_barrier :: proc {
+	vk_command_image_barrier_struct,
+	vk_command_image_barrier_handle,
+}
+
+vk_command_image_barrier_struct :: proc(
+	command_buffer:    VK_Command_Buffer,
+	image:             ^VK_Image,
+	src_access_mask:   vk.AccessFlags           = {},
+	dst_access_mask:   vk.AccessFlags           = {},
+	old_layout:        vk.ImageLayout           = .UNDEFINED,
+	new_layout:        vk.ImageLayout           = .UNDEFINED,
+	subresource_range: vk.ImageSubresourceRange = {{.COLOR}, 0, 1, 0, 1},
+	src_stage_mask:    vk.PipelineStageFlags    = {},
+	dst_stage_mask:    vk.PipelineStageFlags    = {}
+) {
+	ensure(vk_context.initialised)
+	ensure(image != nil)
+
+	barrier: vk.ImageMemoryBarrier = {
+		sType            = .IMAGE_MEMORY_BARRIER,
+		dstAccessMask    = dst_access_mask,
+		srcAccessMask    = src_access_mask,
+		oldLayout        = old_layout,
+		newLayout        = new_layout,
+		image            = image.handle,
+		subresourceRange = subresource_range
+	}
+
+	vk.CmdPipelineBarrier(
+		command_buffer.handle,
+		src_stage_mask,
+		dst_stage_mask,
+		{},
+		0, nil,
+		0, nil,
+		1, &barrier
+	)
+}
+
+vk_command_image_barrier_handle :: proc(
 	command_buffer:    VK_Command_Buffer,
 	image:             vk.Image,
 	src_access_mask:   vk.AccessFlags           = {},

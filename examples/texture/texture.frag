@@ -7,5 +7,5 @@ layout(location = 0) in vec2 inTexCoord;
 layout(binding = 1) uniform sampler2D texSampler;
 
 void main() {
-    outColor = texture(texSampler, inTexCoord);
+    outColor = texture(texSampler, inTexCoord * 4);
 }
