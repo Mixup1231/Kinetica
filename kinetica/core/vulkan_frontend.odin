@@ -10,6 +10,7 @@ import vk "vendor:vulkan"
 
 // TODO(Mitchell):
 // Create VK_Graphics_Pipeline
+// Create VK_Arena
 // Create stencil rendering attachment create
 
 VK_Queue_Types :: distinct bit_set[VK_Queue_Type]
@@ -2061,6 +2062,11 @@ vk_buffer_copy_mapped :: proc(
 		}
 		vk_warn(vk.FlushMappedMemoryRanges(vk_context.device.logical, 1, &mapped_memory_range))
 	}
+}
+
+vk_image_copy :: proc {
+	vk_image_copy_buffer,
+	vk_image_copy_staged,
 }
 
 vk_image_copy_buffer :: proc(
