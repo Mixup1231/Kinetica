@@ -177,7 +177,7 @@ camera_3d_get_view_projection :: proc(
 	return camera.projection * view
 }
 
-camera_3d_set_fov :: proc(
+camera_3d_set_fovy :: proc(
 	camera: ^Camera_3D,
 	fovy:   f32
 ) {

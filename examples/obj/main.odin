@@ -86,7 +86,7 @@ application_create :: proc() {
 
 	core.input_set_mouse_mode(.Locked)
 
-	camera = core.camera_3d_create(f32(extent.width)/f32(extent.height), fovy = la.to_radians(f32(45)))
+	camera = core.camera_3d_create(f32(extent.width)/f32(extent.height), fovy = la.to_radians(f32(60)))
 	
 	transfer_pool   = core.vk_command_pool_create(.Transfer)
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
@@ -332,8 +332,14 @@ application_run :: proc() {
 			if clicks == 2 do light_color = {0.3, 0.3, 1}
 			if clicks == 3 do light_color = {1, 1, 1}
 		}
+		if core.input_is_key_pressed(.Key_C) {
+			core.camera_3d_set_fovy(&camera, la.to_radians(f32(20)))
+		}
+		if core.input_is_key_released(.Key_C) {
+			core.camera_3d_set_fovy(&camera, la.to_radians(f32(60)))
+		}
 		if core.input_is_mouse_pressed(.Mouse_Button_Left) do light_position = camera.position
-		 
+		
 		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())
 		
 		ubo.proj = core.camera_3d_get_view_projection(&camera)

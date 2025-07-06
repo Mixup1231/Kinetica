@@ -818,11 +818,7 @@ vk_image_generate_mip_maps :: proc(
 
 		blit: vk.ImageBlit = {
 			srcOffsets = {
-				{
-					x = 0,
-					y = 0,
-					z = 0
-				},
+				{0, 0, 0},
 				{
 					x = mip_width,
 					y = mip_height,
@@ -836,11 +832,7 @@ vk_image_generate_mip_maps :: proc(
 				layerCount     = 1
 			},
 			dstOffsets = {
-				{
-					x = 0,
-					y = 0,
-					z = 0
-				},
+				{0, 0, 0},
 				{
 					x = mip_width / 2 if mip_width > 1 else 1,
 					y = mip_height / 2 if mip_height > 1 else 1,
