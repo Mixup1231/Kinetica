@@ -88,7 +88,7 @@ application_create :: proc() {
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
 
-	file, _ := obj.read_file("./examples/obj/test.obj")	
+	file, _ := obj.read_file("./examples/obj/test2.obj")	
 	defer obj.destroy_file(&file)
 	
 	mesh := obj.get_mesh(&file)

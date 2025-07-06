@@ -190,12 +190,12 @@ parse_face_token :: proc(
 	}
 	
 	if token_indices[1] != "" {
-		group.vertex_attributes += {.Normal}
+		group.vertex_attributes += {.Texture_Coordinate}
 		j = u32(strconv.atoi(token_indices[1])) - 1
 	}
 	
 	if token_indices[2] != "" {
-		group.vertex_attributes += {.Texture_Coordinate}
+		group.vertex_attributes += {.Normal}
 		k = u32(strconv.atoi(token_indices[2])) - 1
 	}
 
@@ -240,7 +240,11 @@ read_file :: proc(
 	i_buffer, j_buffer: [10]u8 // buffers for converting i and j to strings (10 digits is enough to hold any u32)
 	current_object, current_group: string
 
-	for line in lines {		
+	count: u32
+
+	for line in lines {
+		if strings.contains(line, "vt") do count += 1
+		
 		tokens := tokenize_line(line)
 		defer delete(tokens)
 
@@ -262,6 +266,14 @@ read_file :: proc(
 			}
 			file.objects[current_object] = object
 		case .Group:
+			if current_object == "" {
+				set_current(&i, i_buffer[:], &current_object)
+				object: Object = {
+					groups = make(map[string]Group)
+				}
+				file.objects[current_object] = object
+			}
+			
 			group_name := get_line_name(line, .Group)
 			if group_name == "" {
 				set_current(&j, j_buffer[:], &current_group)
@@ -298,13 +310,13 @@ read_file :: proc(
 				object := &file.objects[current_object]
 				group := &object.groups[current_group]
 				parse_face_token(token, group)
-			}			
+			}
 		case .Position:
 			parse_positions(tokens[1:], &file.positions)			
 		case .Normal:
 			parse_normals(tokens[1:], &file.normals)			
 		case .Texture_Coordinate:
-			parse_texture_coordinates(tokens[1:], &file.texture_coordinates)			
+			parse_texture_coordinates(tokens[1:], &file.texture_coordinates)
 		}
 	}
 
@@ -329,7 +341,7 @@ destroy_file :: proc(
 	delete(file.objects)
 }
 
-get_vertex_positions_by_object :: proc(
+get_vertex_positions_by_objects :: proc(
 	file:    ^File,
 	objects: ..string,
 	allocator := context.allocator
@@ -353,13 +365,13 @@ get_vertex_positions_by_object :: proc(
 		for _, group in file.objects[object_name].groups {
 			if .Position not_in group.vertex_attributes do continue
 
-			for pnt in group.indices {
-				if pnt.x in faces {
-					append(&indices, faces[pnt.x])
+			for ptn in group.indices {
+				if ptn.x in faces {
+					append(&indices, faces[ptn.x])
 				} else {
 					append(&indices, index_count)
-					append(&positions, file.positions[pnt.x])
-					faces[pnt.x] = index_count
+					append(&positions, file.positions[ptn.x])
+					faces[ptn.x] = index_count
 					index_count += 1
 				}
 			}
@@ -390,13 +402,13 @@ get_all_vertex_positions :: proc(
 		for _, group in object.groups {
 			if .Position not_in group.vertex_attributes do continue
 
-			for pnt in group.indices {
-				if pnt.x in faces {
-					append(&indices, faces[pnt.x])
+			for ptn in group.indices {
+				if ptn.x in faces {
+					append(&indices, faces[ptn.x])
 				} else {
 					append(&indices, index_count)
-					append(&positions, file.positions[pnt.x])
-					faces[pnt.x] = index_count
+					append(&positions, file.positions[ptn.x])
+					faces[ptn.x] = index_count
 					index_count += 1
 				}
 			}
@@ -406,17 +418,16 @@ get_all_vertex_positions :: proc(
 	return positions, indices
 }
 
-import "core:fmt"
-
-get_mesh :: proc(
+get_mesh_by_objects :: proc(
 	file:    ^File,
+	objects: ..string,
 	allocator := context.allocator
 ) -> (
 	mesh: Mesh
 ) {
 	context.allocator = allocator
 	ensure(file != nil)
-
+	
 	mesh = {
 		positions           = make([dynamic][3]f32),
 		normals             = make([dynamic][3]f32),
@@ -424,47 +435,42 @@ get_mesh :: proc(
 		indices             = make([dynamic]u32),
 	}
 
-	faces := make(map[[3]u32]u32)
-	defer delete(faces)
-
 	calculate_normals: bool
 	index_count: u32
 	
-	for _, object in file.objects {
-		for _, group in object.groups {
-			for pnt in group.indices {				
+	for object_name in objects {
+		if object_name not_in file.objects do continue
+		
+		for _, group in file.objects[object_name].groups {
+			for ptn in group.indices {
 				append(&mesh.indices, index_count)
 				
 				if .Position in group.vertex_attributes {
-					append(&mesh.positions, file.positions[pnt.x])
+					append(&mesh.positions, file.positions[ptn.x])
 				} else {
 					append(&mesh.positions, [3]f32{0, 0, 0})
 				}
 
-				if .Normal in group.vertex_attributes {
-					append(&mesh.normals, file.normals[pnt.y])
-				} else {
-					append(&mesh.normals, [3]f32{0, 0, 0})
-					calculate_normals = true
-				}
-
 				if .Texture_Coordinate in group.vertex_attributes {
-					append(&mesh.texture_coordinates, file.texture_coordinates[pnt.z])
+					append(&mesh.texture_coordinates, file.texture_coordinates[ptn.y])
 				} else {
 					append(&mesh.texture_coordinates, [2]f32{0, 0})
 				}
 				
-				faces[pnt] = index_count
+				if .Normal in group.vertex_attributes {
+					append(&mesh.normals, file.normals[ptn.z])
+				} else {
+					append(&mesh.normals, [3]f32{0, 0, 0})
+					calculate_normals = true
+				}				
 				index_count += 1
 			}
-
 			mesh.vertex_attributes += group.vertex_attributes
 		}
 	}
 
 	if calculate_normals {
 		mem.set(raw_data(mesh.normals[:]), 0, len(mesh.normals) * 3)
-		
 		for i in 0..<len(mesh.indices) / 3 {
 			i0 := mesh.indices[i*3 + 0]
 			i1 := mesh.indices[i*3 + 1]
@@ -483,7 +489,80 @@ get_mesh :: proc(
 			mesh.normals[i1] = mesh.normals[i1] + n
 			mesh.normals[i2] = mesh.normals[i2] + n
 		}
+		for &normal in mesh.normals do normal = la.normalize(normal)
+	}
+	
+	return mesh
+}
 
+get_mesh :: proc(
+	file:    ^File,
+	allocator := context.allocator
+) -> (
+	mesh: Mesh
+) {
+	context.allocator = allocator
+	ensure(file != nil)
+
+	mesh = {
+		positions           = make([dynamic][3]f32),
+		normals             = make([dynamic][3]f32),
+		texture_coordinates = make([dynamic][2]f32),
+		indices             = make([dynamic]u32),
+	}
+
+	calculate_normals: bool
+	index_count: u32
+	
+	for _, object in file.objects {
+		for _, group in object.groups {
+			for ptn in group.indices {				
+				append(&mesh.indices, index_count)
+				
+				if .Position in group.vertex_attributes {
+					append(&mesh.positions, file.positions[ptn.x])
+				} else {
+					append(&mesh.positions, [3]f32{0, 0, 0})
+				}
+
+				if .Texture_Coordinate in group.vertex_attributes {
+					append(&mesh.texture_coordinates, file.texture_coordinates[ptn.y])
+				} else {
+					append(&mesh.texture_coordinates, [2]f32{0, 0})
+				}
+				
+				if .Normal in group.vertex_attributes {
+					append(&mesh.normals, file.normals[ptn.z])
+				} else {
+					append(&mesh.normals, [3]f32{0, 0, 0})
+					calculate_normals = true
+				}
+				index_count += 1
+			}
+			mesh.vertex_attributes += group.vertex_attributes
+		}
+	}
+
+	if calculate_normals {
+		mem.set(raw_data(mesh.normals[:]), 0, len(mesh.normals) * 3)
+		for i in 0..<len(mesh.indices) / 3 {
+			i0 := mesh.indices[i*3 + 0]
+			i1 := mesh.indices[i*3 + 1]
+			i2 := mesh.indices[i*3 + 2]
+
+			p0 := mesh.positions[i0]
+			p1 := mesh.positions[i1]
+			p2 := mesh.positions[i2]
+
+			e1 := p1 - p0
+			e2 := p2 - p0
+
+			n := la.cross(e1, e2)
+
+			mesh.normals[i0] = mesh.normals[i0] + n
+			mesh.normals[i1] = mesh.normals[i1] + n
+			mesh.normals[i2] = mesh.normals[i2] + n
+		}
 		for &normal in mesh.normals do normal = la.normalize(normal)
 	}
 	
