@@ -17,6 +17,6 @@ layout(binding = 0) uniform ubo {
 void main() {
     gl_Position = view_projection * vec4(inPosition, 1.0);
     outFragPos = inPosition;
-    fragColor = inNormal * 0.5 + 0.5;
+    fragColor = vec3(0.5, 0.5, 0.5);
     outNormal = inNormal;
 }
