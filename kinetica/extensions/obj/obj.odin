@@ -240,11 +240,7 @@ read_file :: proc(
 	i_buffer, j_buffer: [10]u8 // buffers for converting i and j to strings (10 digits is enough to hold any u32)
 	current_object, current_group: string
 
-	count: u32
-
-	for line in lines {
-		if strings.contains(line, "vt") do count += 1
-		
+	for line in lines {		
 		tokens := tokenize_line(line)
 		defer delete(tokens)
 
