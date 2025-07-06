@@ -73,7 +73,7 @@ create_depth_image :: proc(
 application_create :: proc() {	
 	using application
 	
-	core.window_create(800, 600, "Camera example")
+	core.window_create(800, 600, "Texture example")
 	
 	core.vk_swapchain_set_recreation_callback(create_depth_image)
 	extent := core.vk_swapchain_get_extent()
