@@ -250,56 +250,29 @@ read_file :: proc(
 		case .Comment, .Material, .Invalid:
 			continue
 		case .Object:
-			object_name := get_line_name(line, .Object)
-			if object_name == "" {
-				set_current(&i, i_buffer[:], &current_object)
-			} else {
-				current_object = object_name
-			}
-
-			object: Object = {
-				groups = make(map[string]Group)
-			}
-			file.objects[current_object] = object
+			current_object = get_line_name(line, .Object)
+			if current_object == "" do set_current(&i, i_buffer[:], &current_object)
+			file.objects[current_object] = Object{make(map[string]Group)}
 		case .Group:
 			if current_object == "" {
 				set_current(&i, i_buffer[:], &current_object)
-				object: Object = {
-					groups = make(map[string]Group)
-				}
-				file.objects[current_object] = object
+				file.objects[current_object] = Object{make(map[string]Group)}
 			}
 			
-			group_name := get_line_name(line, .Group)
-			if group_name == "" {
-				set_current(&j, j_buffer[:], &current_group)
-			} else {
-				current_group = group_name
-			}
-			
-			group: Group = {
-				indices           = make([dynamic][3]u32),
-				vertex_attributes = {}
-			}
+			current_group = get_line_name(line, .Group)
+			if current_group == "" do set_current(&j, j_buffer[:], &current_group)
 			object := &file.objects[current_object]
-			object.groups[current_group] = group
+			object.groups[current_group] = Group{make([dynamic][3]u32), Vertex_Attributes{}}
 		case .Face:
 			if current_object == "" {
 				set_current(&i, i_buffer[:], &current_object)
-				object: Object = {
-					groups = make(map[string]Group)
-				}
-				file.objects[current_object] = object
+				file.objects[current_object] = Object{make(map[string]Group)}
 			}
 			
 			if current_group == "" {
 				set_current(&j, j_buffer[:], &current_group)
-				group: Group = {
-					indices           = make([dynamic][3]u32),
-					vertex_attributes = {}
-				}
 				object := &file.objects[current_object]
-				object.groups[current_group] = group
+				object.groups[current_group] = Group{make([dynamic][3]u32), Vertex_Attributes{}}
 			}
 			
 			for token in tokens[1:] {
