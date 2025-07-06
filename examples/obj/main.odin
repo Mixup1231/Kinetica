@@ -2,6 +2,7 @@ package main
 
 import "core:log"
 import "core:time"
+import "core:math"
 import la "core:math/linalg"
 
 import "../../kinetica/core"
@@ -12,6 +13,7 @@ import vk "vendor:vulkan"
 Vertex :: struct {
 	position: [3]f32,
 	normal:   [3]f32,
+	uv:       [2]f32,
 }
 
 Ubo :: struct {
@@ -22,10 +24,15 @@ Ubo :: struct {
 }
 
 Frames_In_Flight : u32 : 3
+Image_Width :: 512
+Image_Height :: 512
 
 Application :: struct {
 	camera:            core.Camera_3D,
 	vk_allocator:      core.VK_Allocator,
+	sampler:           vk.Sampler,
+	data:              [Image_Width*Image_Height*4]u8,
+	image:             core.VK_Image,
 	depth_format:      vk.Format,
 	depth_image:       core.VK_Image,
 	graphics_pool:     core.VK_Command_Pool,
@@ -72,7 +79,7 @@ application_create :: proc() {
 	using application
 	
 	core.window_create(800, 600, "Obj example")
-	
+		
 	core.vk_swapchain_set_recreation_callback(create_depth_image)
 	extent := core.vk_swapchain_get_extent()
 
@@ -80,6 +87,7 @@ application_create :: proc() {
 
 	camera = core.camera_3d_create(f32(extent.width)/f32(extent.height), fovy = la.to_radians(f32(45)))
 	
+	transfer_pool   = core.vk_command_pool_create(.Transfer)
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
 	image_available = core.vk_semaphore_create(Frames_In_Flight)
@@ -87,6 +95,89 @@ application_create :: proc() {
 	
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
+	vk_allocator    = core.vk_allocator_get_default()
+	
+	mip_levels := core.vk_extent_get_mip_levels({Image_Width, Image_Height})
+	sampler = core.vk_sampler_create(max_lod = f32(mip_levels))
+	image   = core.vk_texture_image_create(.OPTIMAL, {Image_Width, Image_Height, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
+
+	transition := core.vk_command_buffer_begin_single(transfer_pool)
+	core.vk_command_image_barrier(
+		command_buffer  = transition,
+		image           = &image,
+		new_layout      = .TRANSFER_DST_OPTIMAL,
+		dst_access_mask = {.TRANSFER_WRITE},
+		src_stage_mask  = {.TOP_OF_PIPE},
+		dst_stage_mask  = {.TRANSFER},
+		subresource_range = image.subresource_range
+	)
+	core.vk_command_buffer_end_single(transition)
+
+	c := complex(-0.8, 0.156)
+	zoom := 4.5
+
+	scale_x := 3.0 / zoom
+	scale_y := 2.0 / zoom
+	
+	hsv_to_rgb :: proc(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
+		hh := math.mod(h, 360.0) / 60.0;
+		i := int(hh);
+		ff := hh - f64(i);
+	
+		p := v * (1.0 - s);
+		q := v * (1.0 - s * ff);
+		t := v * (1.0 - s * (1.0 - ff));
+	
+		switch i {
+		case 0: return v, t, p;
+		case 1: return q, v, p;
+		case 2: return p, v, t;
+		case 3: return p, q, v;
+		case 4: return t, p, v;
+		case 5: return v, p, q;
+		case: return 0.0, 0.0, 0.0; // fallback
+		}
+	}
+	
+	max_iterations := 100
+	for y in 0..<Image_Height {
+		for x in 0..<Image_Width {
+			zx := (f64(x) / f64(Image_Width) - 0.5) * scale_x + real(c)
+			zy := (f64(y) / f64(Image_Height) - 0.5) * scale_y + imag(c)
+
+			i := 0
+			for zx * zx + zy * zy < 4.0 && i < max_iterations {
+				tmp := zx * zx - zy * zy + real(c)
+				zy = 2.0 * zx * zy + imag(c)
+				zx = tmp
+				i += 1
+			}
+
+			index := (y * Image_Width + x) * 4
+
+			if i == max_iterations {
+				data[index + 0] = 25
+				data[index + 1] = 25
+				data[index + 2] = 25
+			} else {
+				z_mag := math.sqrt(zx * zx + zy * zy);
+				nu := f64(i) + 1.0 - math.log2(math.log2(z_mag));
+				t := nu / f64(max_iterations);
+				
+				hue := 360.0 * t;
+				r, g, b := hsv_to_rgb(hue, 1.0, 1.0);
+				
+				data[index + 0] = u8(clamp(r * 255.0, 0.0, 255.0))
+				data[index + 1] = u8(clamp(g * 255.0, 0.0, 255.0))
+				data[index + 2] = u8(clamp(b * 255.0, 0.0, 255.0))
+			}
+			data[index + 3] = 255
+		} 
+	}
+		
+	core.vk_image_copy_staged(transfer_pool, &image, data[:], &vk_allocator)
+	
+	core.vk_image_generate_mip_maps(graphics_pool, &image)
 
 	file, _ := obj.read_file("./examples/obj/test2.obj")	
 	defer obj.destroy_file(&file)
@@ -96,7 +187,7 @@ application_create :: proc() {
 	
 	cube_vertices = make([dynamic]Vertex)
 	for index in mesh.indices {
-		append(&cube_vertices, Vertex{mesh.positions[index], mesh.normals[index]})
+		append(&cube_vertices, Vertex{mesh.positions[index], mesh.normals[index], mesh.texture_coordinates[index]})
 	}
 	
 	cube_indices  = make([dynamic]u32)
@@ -104,7 +195,6 @@ application_create :: proc() {
 		append(&cube_indices, index)
 	}
 	
-	vk_allocator   = core.vk_allocator_get_default()
 	vertex_buffer  = core.vk_vertex_buffer_create(vk.DeviceSize(size_of(Vertex) * len(cube_vertices)), &vk_allocator)
 	index_buffer   = core.vk_index_buffer_create(vk.DeviceSize(size_of(u32) * len(cube_indices)), &vk_allocator)
 	uniform_buffer = core.vk_uniform_buffer_create(size_of(ubo), &vk_allocator) 
@@ -112,7 +202,6 @@ application_create :: proc() {
 	depth_format = .D32_SFLOAT
 	create_depth_image(core.vk_swapchain_get_extent())
 	
-	transfer_pool = core.vk_command_pool_create(.Transfer)
 	core.vk_buffer_copy(transfer_pool, &vertex_buffer, raw_data(cube_vertices[:]), &vk_allocator)
 	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(cube_indices[:]), &vk_allocator)
 
@@ -133,15 +222,23 @@ application_create :: proc() {
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
 	color_blend_state := core.vk_color_blend_state_create({color_blend_attachment_state})
 
-	descriptor_pool = core.vk_descriptor_pool_create({.UNIFORM_BUFFER}, {Frames_In_Flight}, Frames_In_Flight)
+	descriptor_pool = core.vk_descriptor_pool_create({.UNIFORM_BUFFER, .COMBINED_IMAGE_SAMPLER}, {Frames_In_Flight, Frames_In_Flight}, Frames_In_Flight)
 	
 	descriptor_layout = core.vk_descriptor_set_layout_create(
-		{{
-			binding         = 0,
-			descriptorType  = .UNIFORM_BUFFER,
-			descriptorCount = 1,
-			stageFlags      = {.VERTEX, .FRAGMENT},
-		}},
+		{
+			{
+				binding         = 0,
+				descriptorType  = .UNIFORM_BUFFER,
+				descriptorCount = 1,
+				stageFlags      = {.VERTEX, .FRAGMENT},
+			},
+			{
+				binding         = 1,
+				descriptorType  = .COMBINED_IMAGE_SAMPLER,
+				descriptorCount = 1,
+				stageFlags      = {.FRAGMENT}
+			}
+		},
 	)
 
 	descriptor_layouts: [Frames_In_Flight]vk.DescriptorSetLayout
@@ -296,6 +393,7 @@ application_run :: proc() {
 		core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
 		core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
 		core.vk_descriptor_set_update_uniform_buffer(descriptor_sets[frame], 0, &uniform_buffer)
+		core.vk_descriptor_set_update_image(descriptor_sets[frame], 1, &image, sampler)
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {vertex_buffer.handle})
 		core.vk_command_index_buffer_bind(command_buffers[frame], index_buffer.handle, .UINT32)
 		core.vk_command_draw_indexed(command_buffers[frame], u32(len(cube_indices)))
@@ -326,6 +424,10 @@ application_run :: proc() {
 		end = time.tick_now()
 	}	
 	
+	delete(cube_vertices)
+	delete(cube_indices)
+	core.vk_sampler_destroy(sampler)
+	core.vk_image_destroy(&image)
 	core.vk_image_destroy(&depth_image)
 	core.vk_command_buffer_destroy(command_buffers)
 	core.vk_command_pool_destroy(graphics_pool)

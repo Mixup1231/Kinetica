@@ -2,10 +2,11 @@
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec2 inTexCoord;
 
-layout(location = 0) out vec3 fragColor;
-layout(location = 1) out vec3 outFragPos;
-layout(location = 2) out vec3 outNormal;
+layout(location = 0) out vec3 outFragPos;
+layout(location = 1) out vec3 outNormal;
+layout(location = 2) out vec2 outTexCoord;
 
 layout(binding = 0) uniform ubo {
    mat4 view_projection;
@@ -17,6 +18,6 @@ layout(binding = 0) uniform ubo {
 void main() {
     gl_Position = view_projection * vec4(inPosition, 1.0);
     outFragPos = inPosition;
-    fragColor = vec3(0.5, 0.5, 0.5);
     outNormal = inNormal;
+    outTexCoord = inTexCoord;
 }

@@ -83,18 +83,18 @@ application_create :: proc() {
 	camera = core.camera_3d_create(f32(extent.width)/f32(extent.height))
 	
 	graphics_pool   = core.vk_command_pool_create(.Graphics)
-	transfer_pool = core.vk_command_pool_create(.Transfer)
+	transfer_pool   = core.vk_command_pool_create(.Transfer)
 	command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Frames_In_Flight)
 	image_available = core.vk_semaphore_create(Frames_In_Flight)
 	block_until     = core.vk_fence_create(true, Frames_In_Flight)
 	
 	swapchain_image_count := core.vk_swapchain_get_image_count()
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
-	vk_allocator   = core.vk_allocator_get_default()
+	vk_allocator    = core.vk_allocator_get_default()
 		
 	mip_levels := core.vk_extent_get_mip_levels({Image_Width, Image_Height})
 	sampler = core.vk_sampler_create(max_lod = f32(mip_levels))
-	image = core.vk_texture_image_create(.OPTIMAL, {Image_Width, Image_Height, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
+	image   = core.vk_texture_image_create(.OPTIMAL, {Image_Width, Image_Height, 1}, .R8G8B8A8_SRGB, &vk_allocator, mip_levels)
 
 	transition := core.vk_command_buffer_begin_single(transfer_pool)
 	core.vk_command_image_barrier(

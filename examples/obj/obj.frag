@@ -2,9 +2,9 @@
 
 layout(location = 0) out vec4 outColor;
 
-layout(location = 0) in vec3 inColor;
-layout(location = 1) in vec3 inFragPos;
-layout(location = 2) in vec3 inNormal;
+layout(location = 0) in vec3 inFragPos;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec2 inTexCoord;
 
 layout(binding = 0) uniform ubo {
    mat4 view_projection;
@@ -12,6 +12,8 @@ layout(binding = 0) uniform ubo {
    vec3 light_position;
    vec3 light_color;
 };
+
+layout(binding = 1) uniform sampler2D texSampler;
 
 void main() {
     vec3 normal = normalize(inNormal);
@@ -27,6 +29,6 @@ void main() {
     float specular_strength = pow(max(dot(view_direction, reflect_direction), 0.0), 32);
     vec3 specular = specular_strength * light_color;
     
-    vec3 result = (ambient + diffuse + specular) * inColor;
-    outColor = vec4(result, 1.0);
+    vec4 result = vec4(ambient + diffuse + specular, 1.0) * texture(texSampler, inTexCoord);
+    outColor = result;
 }
