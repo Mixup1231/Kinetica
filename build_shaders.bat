@@ -12,3 +12,5 @@ glslang -V examples/light/light.frag -o shaders/light.frag.spv
 glslang -V examples/light/light.vert -o shaders/light.vert.spv
 glslang -V examples/texture/texture.frag -o shaders/texture.frag.spv
 glslang -V examples/texture/texture.vert -o shaders/texture.vert.spv
+glslang -V examples/obj/obj.frag -o shaders/obj.frag.spv
+glslang -V examples/obj/obj.vert -o shaders/obj.vert.spv
