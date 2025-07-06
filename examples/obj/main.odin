@@ -18,6 +18,7 @@ Vertex :: struct {
 
 Ubo :: struct {
 	proj:           la.Matrix4f32,
+	model:          la.Matrix4f32,
 	position:       la.Vector4f32,
 	light_position: la.Vector4f32,
 	light_color:    la.Vector4f32,
@@ -189,6 +190,10 @@ application_create :: proc() {
 	for index in mesh.indices {
 		append(&cube_vertices, Vertex{mesh.positions[index], mesh.normals[index], mesh.texture_coordinates[index]})
 	}
+
+	aabb := core.aabb_from_positions(mesh.positions[:])
+	origin := core.aabb_get_origin(aabb)
+	camera.position = origin
 	
 	cube_indices  = make([dynamic]u32)
 	for index in mesh.indices {
@@ -280,6 +285,11 @@ application_run :: proc() {
 	light_position: la.Vector3f32 = {2, -2, 2}
 	light_color: la.Vector3f32 = {1, 0.3, 0.3}
 	clicks: u32
+	transform: core.Transform
+	transform.scale = {1, 1, 1}
+	transform.rotation = la.quaternion_from_pitch_yaw_roll_f32(0,0,0)
+	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
+	
 	for !core.window_should_close() {
 		core.window_poll()		
 		
@@ -288,6 +298,9 @@ application_run :: proc() {
 		extent := core.vk_swapchain_get_extent()
 		
 		dt = time.duration_seconds(time.tick_diff(start, end))
+
+		core.transform_rotate(&transform, {0, 1, 0}, f32(dt))
+		
 		start = time.tick_now()
 
 		camera.speed = 2
@@ -324,6 +337,7 @@ application_run :: proc() {
 		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())
 		
 		ubo.proj = core.camera_3d_get_view_projection(&camera)
+		ubo.model = core.transform_get_matrix(&transform)
 		ubo.position = camera.position.xyzz
 		ubo.light_position = light_position.xyzz
 		ubo.light_color = light_color.xyzz

@@ -1,22 +1,57 @@
 package core
 
+import "core:log"
 import la "core:math/linalg"
 
 AABB :: struct {
-	min: la.Vector3f32,
-	max: la.Vector3f32,
+	min: [3]f32,
+	max: [3]f32,
 }
 
 Sphere :: struct {
-	position: la.Vector3f32,
+	position: [3]f32,
 	radius:   f32,
+}
+
+Transform :: struct {
+	position: [3]f32,
+	scale:    [3]f32,
+	rotation: la.Quaternionf32,
+}
+
+aabb_from_positions :: proc(
+	positions: [][3]f32
+) -> (
+	aabb: AABB
+) {
+	aabb.min = {max(f32), max(f32), max(f32)}
+	aabb.max = {min(f32), min(f32), min(f32)}
+
+	for position in positions {
+		aabb.min = la.min(aabb.min, position)
+		aabb.max = la.max(aabb.max, position)
+	}
+
+	return aabb
+}
+
+aabb_get_origin :: proc(
+	aabb: AABB
+) -> (
+	origin: [3]f32
+) {
+	return {
+		aabb.max.x - (aabb.max.x - aabb.min.x) * 0.5,
+		aabb.max.y - (aabb.max.y - aabb.min.y) * 0.5,
+		aabb.max.z - (aabb.max.z - aabb.min.z) * 0.5,
+	}
 }
 
 aabb_get_positive_vertex :: proc(
 	aabb:   AABB,
-	normal: la.Vector3f32,	
+	normal: [3]f32,
 ) -> (
-	positive_vertex: la.Vector3f32
+	positive_vertex: [3]f32
 ) {
 	return {
 		aabb.max.x if normal.x >= 0 else aabb.min.x,
@@ -58,4 +93,53 @@ sphere_intersects_sphere :: proc(
 	distance_squared := la.length2(b.position - a.position)
 	
 	return distance_squared <= radius_squard
+}
+
+transform_get_matrix :: proc(
+	transform: ^Transform
+) -> (
+	m: matrix[4, 4]f32
+) {
+	ensure(transform != nil)
+
+	m = la.identity_matrix(la.Matrix4f32)
+
+	scale       := la.matrix4_scale_f32(transform.scale)
+	rotation    := la.matrix4_from_quaternion_f32(la.quaternion_normalize(transform.rotation))
+	translation := la.matrix4_translate_f32(transform.position)
+
+	m *= translation
+	m *= rotation
+	m *= scale
+
+	return m
+}
+
+transform_scale :: proc(
+	transform: ^Transform,
+	scale:     [3]f32,
+) {
+	ensure(transform != nil)
+	
+	transform.scale += scale
+}
+
+transform_rotate :: proc(
+	transform: ^Transform,
+	axis:      [3]f32,
+	angle:     f32
+) {
+	ensure(transform != nil)
+
+	rotation := la.quaternion_angle_axis_f32(angle, axis)
+	transform.rotation = la.quaternion_mul_quaternion(transform.rotation, rotation)
+}
+
+transform_translate :: proc(
+	transform:   ^Transform,
+	translation: [3]f32,
+) {
+	ensure(transform != nil)
+
+	transform.position += translation
 }

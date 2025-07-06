@@ -8,6 +8,7 @@ layout(location = 2) in vec2 inTexCoord;
 
 layout(binding = 0) uniform ubo {
    mat4 view_projection;
+   mat4 model;
    vec3 camera_position;
    vec3 light_position;
    vec3 light_color;
