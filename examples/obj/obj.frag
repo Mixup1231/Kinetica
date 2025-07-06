@@ -16,7 +16,7 @@ layout(binding = 0) uniform ubo {
 void main() {
     vec3 normal = normalize(inNormal);
     float ambient_stength = 0.1;
-    vec3 ambient = ambient_stength * light_color;
+    vec3 ambient = ambient_stength * vec3(1, 1, 1);
 
     vec3 light_direction = normalize(light_position - inFragPos);
     float diffuse_strength = max(dot(normal, light_direction), 0.0);
