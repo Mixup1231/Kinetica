@@ -95,6 +95,23 @@ sphere_intersects_sphere :: proc(
 	return distance_squared <= radius_squard
 }
 
+transform_create :: proc(
+	position: [3]f32 = {0, 0, 0},
+	scale:    [3]f32 = {1, 1, 1},
+	pitch:    f32    = 0,
+	yaw:      f32    = 0
+) -> (
+	transform: Transform
+) {
+	transform = {
+		position = position,
+		rotation = la.quaternion_from_pitch_yaw_roll(pitch, yaw, 0),
+		scale    = scale
+	}
+
+	return transform
+}
+
 transform_get_matrix :: proc(
 	transform: ^Transform
 ) -> (

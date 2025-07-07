@@ -322,7 +322,6 @@ vk_command_descriptor_set_bind :: proc(
 	vk.CmdBindDescriptorSets(command_buffer.handle, bind_point, pipeline_layout, 0, 1, &descriptor_set, 0, nil)
 }
 
-// NOTE(Mitchell): Could abstract into VK_Descriptor_Set
 vk_descriptor_set_update_uniform_buffer :: proc(
 	descriptor_set: vk.DescriptorSet,
 	binding:        u32,
@@ -347,6 +346,35 @@ vk_descriptor_set_update_uniform_buffer :: proc(
 		dstArrayElement = array_element,
 		descriptorCount = 1,
 		descriptorType  = .UNIFORM_BUFFER,
+		pBufferInfo     = &descriptor_buffer_info
+	}
+	vk.UpdateDescriptorSets(vk_context.device.logical, 1, &write_desriptor_set, 0, nil)
+}
+
+vk_descriptor_set_update_storage_buffer :: proc(
+	descriptor_set: vk.DescriptorSet,
+	binding:        u32,
+	uniform_buffer: ^VK_Buffer,
+	offset:         vk.DeviceSize = 0,     
+	array_element:  u32           = 0
+) {
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(uniform_buffer != nil)
+
+	descriptor_buffer_info: vk.DescriptorBufferInfo = {
+		buffer = uniform_buffer.handle,
+		offset = offset,
+		range  = uniform_buffer.size
+	}
+
+	write_desriptor_set: vk.WriteDescriptorSet = {
+		sType           = .WRITE_DESCRIPTOR_SET,
+		dstSet          = descriptor_set,
+		dstBinding      = binding,
+		dstArrayElement = array_element,
+		descriptorCount = 1,
+		descriptorType  = .STORAGE_BUFFER,
 		pBufferInfo     = &descriptor_buffer_info
 	}
 	vk.UpdateDescriptorSets(vk_context.device.logical, 1, &write_desriptor_set, 0, nil)
@@ -1899,6 +1927,33 @@ vk_uniform_buffer_create :: proc(
 	)
 
 	return uniform_buffer
+}
+
+vk_storage_buffer_create :: proc(
+	size:         vk.DeviceSize,
+	vk_allocator: ^VK_Allocator,
+	memory_flags: vk.MemoryAllocateFlags = {},
+	sharing_mode: vk.SharingMode         = .EXCLUSIVE,
+	queues:       VK_Queue_Types         = {},
+	flags:        vk.BufferCreateFlags   = {}
+) -> (
+	storage_buffer: VK_Buffer
+) {
+	assert(vk_allocator != nil)
+
+	storage_buffer = vk_buffer_create(
+		size,
+		{.STORAGE_BUFFER, .TRANSFER_DST},
+		.Always,
+		vk_allocator,
+		{.HOST_VISIBLE, .HOST_COHERENT},
+		memory_flags,
+		sharing_mode,
+		queues,
+		flags
+	)
+
+	return storage_buffer
 }
 
 // NOTE(Mitchell): We may want to have {.DEVICE_LOCAL} be configurable i.e. {.HOST_VISIBLE, .HOST_COHERENT}

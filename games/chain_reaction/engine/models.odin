@@ -6,8 +6,8 @@ import vk "vendor:vulkan"
 
 Mesh  :: distinct u32
 
-Texture_Types :: distinct bit_set[Texture_Type]
-Texture_Type :: enum {
+Texture_Types :: distinct bit_set[Texture_Type; u32]
+Texture_Type :: enum(u32) {
 	Albedo,
 	Emissive,
 }
@@ -31,5 +31,6 @@ Mesh_Cold :: struct {
 Mesh_Hot :: struct {
 	vertex_buffer: core.VK_Buffer,
 	index_buffer:  core.VK_Buffer,
+	index_count:   u32,
 	texture_types: Texture_Types
 }

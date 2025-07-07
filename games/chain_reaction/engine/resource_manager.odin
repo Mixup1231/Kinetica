@@ -1,5 +1,6 @@
 package engine
 
+import "core:log"
 import "core:mem"
 
 import "../../../kinetica/core"
@@ -9,12 +10,14 @@ import vk "vendor:vulkan"
 import "vendor:stb/image"
 
 Resource_Manager :: struct {
-	textures:     [Texture_Type]Sparse_Array(Mesh, Texture, Max_Textures_Per_Type),
-	mesh_colds:   Sparse_Array(Mesh, Mesh_Cold, Max_Meshes),
-	mesh_hots:    Sparse_Array(Mesh, Mesh_Hot, Max_Meshes),
-	free_meshes:  [dynamic]Mesh,
-	rm_allocator: mem.Allocator,
-	vk_allocator: core.VK_Allocator,
+	graphics_pool: core.VK_Command_Pool,
+	transfer_pool: core.VK_Command_Pool,
+	textures:      [Texture_Type]Sparse_Array(Mesh, Texture, Max_Textures_Per_Type),
+	mesh_colds:    Sparse_Array(Mesh, Mesh_Cold, Max_Meshes),
+	mesh_hots:     Sparse_Array(Mesh, Mesh_Hot, Max_Meshes),
+	free_meshes:   [dynamic]Mesh,
+	rm_allocator:  mem.Allocator,
+	vk_allocator:  core.VK_Allocator,
 
 	initialised: bool,
 }
@@ -31,6 +34,9 @@ resource_manager_init :: proc(
 	
 	rm_allocator = allocator
 	vk_allocator = core.vk_allocator_get_default()
+
+	transfer_pool = core.vk_command_pool_create(.Transfer)
+	graphics_pool = core.vk_command_pool_create(.Graphics)
 	
 	for &texture_array in textures {
 		texture_array = sparse_array_create(Mesh, Texture, Max_Textures_Per_Type)
@@ -119,7 +125,10 @@ resource_manager_load_mesh :: proc(
 	mesh_hot := sparse_array_insert(&mesh_hots, mesh)
 
 	mesh_hot.vertex_buffer = core.vk_vertex_buffer_create(vk.DeviceSize(len(mesh_cold.vertices) * size_of(Vertex)), &vk_allocator)
+	core.vk_buffer_copy(transfer_pool, &mesh_hot.vertex_buffer, raw_data(mesh_cold.vertices[:]), &vk_allocator)
 	mesh_hot.index_buffer = core.vk_index_buffer_create(vk.DeviceSize(len(mesh_cold.indices) * size_of(u32)), &vk_allocator)
+	core.vk_buffer_copy(transfer_pool, &mesh_hot.index_buffer, raw_data(mesh_cold.indices[:]), &vk_allocator)
+	mesh_hot.index_count = u32(len(mesh_cold.indices))
 
 	for filepath, texture_type in texture_filepaths {
 		if filepath == "" do continue
@@ -141,12 +150,38 @@ resource_manager_destroy_mesh :: proc(
 	mesh_cold := sparse_array_get(&mesh_colds, mesh)
 	delete(mesh_cold.vertices)
 	delete(mesh_cold.indices)
+	sparse_array_remove(&mesh_colds, mesh)
 
 	mesh_hot := sparse_array_get(&mesh_hots, mesh)
 	core.vk_buffer_destroy(&mesh_hot.vertex_buffer)
 	core.vk_buffer_destroy(&mesh_hot.index_buffer)
+	sparse_array_remove(&mesh_hots, mesh)
 
 	append(&free_meshes, mesh)
 	
 	// TODO(Mitchell): unload textures
+}
+
+resource_manager_get_mesh_cold :: proc(
+	mesh: Mesh
+) -> (
+	mesh_hot: ^Mesh_Cold
+) {
+	using resource_manager
+	ensure(initialised)
+	ensure(sparse_array_contains(&mesh_colds, mesh))
+
+	return sparse_array_get(&mesh_colds, mesh)
+}
+
+resource_manager_get_mesh_hot :: proc(
+	mesh: Mesh
+) -> (
+	mesh_hot: ^Mesh_Hot
+) {
+	using resource_manager
+	ensure(initialised)
+	ensure(sparse_array_contains(&mesh_hots, mesh))
+
+	return sparse_array_get(&mesh_hots, mesh)
 }
