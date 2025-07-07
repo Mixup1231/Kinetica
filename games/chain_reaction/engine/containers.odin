@@ -126,7 +126,7 @@ sparse_array_slice_range :: proc(
 ) {
 	assert(sparse_array != nil)
 	assert(begin <= end)
-	assert(end < sparse_array.length)
+	assert(end <= sparse_array.length)
 
 	return sparse_array.data[begin:end]
 }
