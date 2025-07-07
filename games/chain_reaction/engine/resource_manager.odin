@@ -52,6 +52,11 @@ resource_manager_destory :: proc() {
 	ensure(initialised)
 
 	for &texture_array in textures {
+		texture_slice := sparse_array_slice(&texture_array)
+		for &texture in texture_slice {
+			core.vk_image_destroy(&texture.image)
+			core.vk_sampler_destroy(texture.sampler)
+		}
 		sparse_array_destroy(&texture_array)
 	}
 	
