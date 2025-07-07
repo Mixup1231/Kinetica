@@ -101,6 +101,16 @@ sparse_array_get :: proc(
 	return &sparse_array.data[sparse_array.key_to_index[key]]
 }
 
+sparse_array_length :: proc(
+	sparse_array: ^Sparse_Array($Key, $Value, $Capacity),
+) -> (
+	length: uint
+) {
+	assert(sparse_array != nil)
+
+	return sparse_array.length
+}
+
 sparse_array_contains :: proc(
 	sparse_array: ^Sparse_Array($Key, $Value, $Capacity),
 	key:          Key,
