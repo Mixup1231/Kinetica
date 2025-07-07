@@ -42,8 +42,8 @@ input_destroy :: proc() {
 }
 
 input_poll :: proc() {
-	ensure(glfw_context.initialised)
-	ensure(input.initialised)
+	assert(glfw_context.initialised)
+	assert(input.initialised)
 
 	// keyboard
 	for key in Keycode {

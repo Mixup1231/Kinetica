@@ -19,7 +19,7 @@ input_is_key_pressed :: proc(
 ) -> (
 	pressed: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.key_states[key] == .Pressed
 }
@@ -29,7 +29,7 @@ input_is_key_held :: proc(
 ) -> (
 	held: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.key_states[key] == .Held
 }
@@ -39,7 +39,7 @@ input_is_key_released :: proc(
 ) -> (
 	released: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.key_states[key] == .Released
 }
@@ -49,7 +49,7 @@ input_is_key_up :: proc(
 ) -> (
 	up: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.key_states[key] == .Up
 }
@@ -59,7 +59,7 @@ input_is_mouse_pressed :: proc(
 ) -> (
 	pressed: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.mouse_states[button] == .Pressed
 }
@@ -69,7 +69,7 @@ input_is_mouse_held :: proc(
 ) -> (
 	held: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.mouse_states[button] == .Held
 }
@@ -79,7 +79,7 @@ input_is_mouse_released :: proc(
 ) -> (
 	released: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.mouse_states[button] == .Released
 }
@@ -89,7 +89,7 @@ input_is_mouse_up :: proc(
 ) -> (
 	up: bool
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.mouse_states[button] == .Up
 }
@@ -97,7 +97,7 @@ input_is_mouse_up :: proc(
 input_get_mouse_pos_f32 :: proc() -> (
 	mouse_pos: [2]f32
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return {
 		f32(input.mouse_pos.x),
@@ -108,7 +108,7 @@ input_get_mouse_pos_f32 :: proc() -> (
 input_get_mouse_pos_f64 :: proc() -> (
 	mouse_pos: [2]f64
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.mouse_pos
 }
@@ -116,7 +116,7 @@ input_get_mouse_pos_f64 :: proc() -> (
 input_get_relative_mouse_pos_f32 :: proc() -> (
 	relative_pos: [2]f32
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return {
 		f32(input.rel_mouse_pos.x),
@@ -127,7 +127,7 @@ input_get_relative_mouse_pos_f32 :: proc() -> (
 input_get_relative_mouse_pos_f64 :: proc() -> (
 	relative_pos: [2]f64
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	return input.rel_mouse_pos
 }
@@ -135,7 +135,7 @@ input_get_relative_mouse_pos_f64 :: proc() -> (
 input_set_mouse_mode :: proc(
 	mode: Mouse_Mode
 ) {
-	ensure(input.initialised)
+	assert(input.initialised)
 
 	glfw.SetInputMode(glfw_context.handle, glfw.CURSOR, i32(mode))
 	input.mouse_mode = mode

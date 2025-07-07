@@ -7,8 +7,6 @@ window_create :: proc(
 	width:       i32,
 	height:      i32,
 	title:       cstring,
-	app_name:    cstring = "",
-	app_version: u32 = 0,
 	allocator := context.allocator,
 ) {
 	context.allocator = allocator
@@ -32,12 +30,10 @@ window_create :: proc(
 	input_init()
 
 	layers: []cstring
-	when !RELEASE do layers = {"VK_LAYER_KHRONOS_validation"}
+	when VALIDATION_LAYERS do layers = {"VK_LAYER_KHRONOS_validation"}
 
 	app_info: VK_Application_Info = {
 		api_version = vk.API_VERSION_1_3,
-		app_name    = app_name,
-		app_version = app_version,
 		extensions  = {},
 		layers      = layers,
 		features    = nil,
@@ -144,4 +140,3 @@ window_get_handle :: proc() -> (
 ) {
 	return glfw_context.handle
 }
-

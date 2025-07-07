@@ -80,10 +80,10 @@ vk_allocate_default :: proc(
 ) -> (
 	allocation: VK_Allocation
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(allocator != nil)
-	ensure(allocate_info != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(allocator != nil)
+	assert(allocate_info != nil)
 	
 	allocation = {
 		type_index = allocate_info.memory_info.memoryTypeIndex,
@@ -103,10 +103,10 @@ vk_deallocate_default :: proc(
 	allocator:  ^VK_Allocator,
 	allocation: ^VK_Allocation
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(allocator != nil)
-	ensure(allocation != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(allocator != nil)
+	assert(allocation != nil)
 
 	vk.FreeMemory(vk_context.device.logical, allocation.handle, nil)
 }
@@ -127,7 +127,7 @@ vk_shader_module_create :: proc(
 	shader_module: vk.ShaderModule
 ){
 	context.allocator = allocator
-	ensure(vk_context.initialised)
+	assert(vk_context.initialised)
 
 	shader_code, read_file := os.read_entire_file(string(filepath))
 	if !read_file {
@@ -150,8 +150,8 @@ vk_shader_module_create :: proc(
 vk_shader_module_destroy :: proc(
 	shader_module: vk.ShaderModule
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk.DestroyShaderModule(vk_context.device.logical, shader_module, nil)
 }
@@ -165,11 +165,11 @@ vk_descriptor_pool_create :: proc(
 	descriptor_pool: vk.DescriptorPool
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	type_count := len(descriptor_types)
-	ensure(type_count == len(descriptor_counts))
+	assert(type_count == len(descriptor_counts))
 
 	pool_sizes := make([]vk.DescriptorPoolSize, type_count)
 	defer delete(pool_sizes)
@@ -196,8 +196,8 @@ vk_descriptor_pool_create :: proc(
 vk_descriptor_pool_destroy :: proc(
 	descriptor_pool: vk.DescriptorPool
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk.DestroyDescriptorPool(vk_context.device.logical, descriptor_pool, nil)
 }
@@ -208,8 +208,8 @@ vk_descriptor_set_layout_create :: proc(
 ) -> (
 	descriptor_set_layout: vk.DescriptorSetLayout
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	descriptor_set_layout_create_info: vk.DescriptorSetLayoutCreateInfo = {
 		sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -225,8 +225,8 @@ vk_descriptor_set_layout_create :: proc(
 vk_descriptor_set_layout_destroy :: proc(
 	descriptor_layout: vk.DescriptorSetLayout
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk.DestroyDescriptorSetLayout(vk_context.device.logical, descriptor_layout, nil)
 }
@@ -242,8 +242,8 @@ vk_descriptor_set_create_single :: proc(
 ) -> (
 	descriptor_set: vk.DescriptorSet
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	descriptor_layout := descriptor_layout 
 
@@ -266,8 +266,8 @@ vk_descriptor_set_create_slice :: proc(
 	descriptor_sets: []vk.DescriptorSet
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	layout_count := u32(len(descriptor_layouts))
 	descriptor_sets = make([]vk.DescriptorSet, layout_count)
@@ -292,8 +292,8 @@ vk_descriptor_set_destroy_single :: proc(
 	descriptor_pool: vk.DescriptorPool,
 	descriptor_set:  vk.DescriptorSet
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	descriptor_set := descriptor_set
 	
@@ -304,8 +304,8 @@ vk_descriptor_set_destroy_slice :: proc(
 	descriptor_pool: vk.DescriptorPool,
 	descriptor_sets: []vk.DescriptorSet
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk.FreeDescriptorSets(vk_context.device.logical, descriptor_pool, u32(len(descriptor_sets)), raw_data(descriptor_sets))
 	delete(descriptor_sets)
@@ -330,9 +330,9 @@ vk_descriptor_set_update_uniform_buffer :: proc(
 	offset:         vk.DeviceSize = 0,     
 	array_element:  u32           = 0
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(uniform_buffer != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(uniform_buffer != nil)
 
 	descriptor_buffer_info: vk.DescriptorBufferInfo = {
 		buffer = uniform_buffer.handle,
@@ -360,8 +360,8 @@ vk_descriptor_set_update_image :: proc(
 	offset:         vk.DeviceSize = 0,     
 	array_element:  u32           = 0
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	descriptor_image_info: vk.DescriptorImageInfo = {
 		sampler     = sampler,
@@ -585,11 +585,11 @@ vk_dynamic_state_create :: proc(
 ) {		
 	found_viewport: bool
 	for state in dynamic_states do if state == .VIEWPORT do found_viewport = true
-	ensure(found_viewport)
+	assert(found_viewport)
 	
 	found_scissor:  bool
 	for state in dynamic_states do if state == .SCISSOR do found_scissor = true
-	ensure(found_scissor)
+	assert(found_scissor)
 	
 	dynamic_state = {
 		sType             = .PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -603,8 +603,8 @@ vk_dynamic_state_create :: proc(
 vk_swapchain_set_recreation_callback :: proc(
 	callback: proc(vk.Extent2D)
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
 	
 	vk_context.swapchain.on_recreation = callback
 }
@@ -616,8 +616,8 @@ vk_image_find_supported_format :: proc(
 ) -> (
 	supported_format: Maybe(vk.Format)
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	for format in candidates {
 		format_properties: vk.FormatProperties
@@ -626,7 +626,7 @@ vk_image_find_supported_format :: proc(
 		#partial switch (tiling) {
 		case .LINEAR: if (features & format_properties.linearTilingFeatures) == features do return format
 		case .OPTIMAL: if (features & format_properties.optimalTilingFeatures) == features do return format
-		case: ensure(false)
+		case: assert(false)
 		}
 	}
 
@@ -672,9 +672,9 @@ vk_image_create :: proc(
 ) -> (
 	image: VK_Image
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_allocator != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(vk_allocator != nil)
 	
 	image.format       = format
 	image.extent       = extent
@@ -715,7 +715,7 @@ vk_image_create :: proc(
 	vk.GetImageMemoryRequirements(vk_context.device.logical, image.handle, &memory_requirements)
 
 	memory_type_index := vk_memory_type_find_index(vk_context.device.physical, {.DEVICE_LOCAL}, memory_requirements.memoryTypeBits)
-	ensure(memory_type_index != nil)
+	assert(memory_type_index != nil)
 
 	memory_info: vk.MemoryAllocateInfo = {
 		sType           = .MEMORY_ALLOCATE_INFO,
@@ -761,10 +761,10 @@ vk_image_create :: proc(
 vk_image_destroy :: proc(
 	image: ^VK_Image
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(image != nil)
-	ensure(image.vk_allocator != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(image != nil)
+	assert(image.vk_allocator != nil)
 
 	vk.DestroyImageView(vk_context.device.logical, image.view, nil)
 	vk.DestroyImage(vk_context.device.logical, image.handle, nil)
@@ -775,12 +775,12 @@ vk_image_generate_mip_maps :: proc(
 	command_pool: VK_Command_Pool,
 	image:        ^VK_Image,
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	format_properties: vk.FormatProperties
 	vk.GetPhysicalDeviceFormatProperties(vk_context.device.physical, image.format, &format_properties)
-	ensure(.SAMPLED_IMAGE_FILTER_LINEAR in format_properties.optimalTilingFeatures)
+	assert(.SAMPLED_IMAGE_FILTER_LINEAR in format_properties.optimalTilingFeatures)
 	
 	barrier: vk.ImageMemoryBarrier = {
 		sType = .IMAGE_MEMORY_BARRIER,
@@ -911,10 +911,10 @@ vk_depth_image_create :: proc(
 ) -> (
 	depth_image: VK_Image
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_allocator != nil)
-	ensure(.DEPTH in aspect_mask)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(vk_allocator != nil)
+	assert(.DEPTH in aspect_mask)
 	
 	return vk_image_create(
 		format,
@@ -952,12 +952,12 @@ vk_texture_image_create :: proc(
 ) -> (
 	depth_image: VK_Image
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_allocator != nil)
-	ensure(.COLOR in aspect_mask)
-	ensure(.TRANSFER_DST in usage)
-	ensure(.SAMPLED in usage)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(vk_allocator != nil)
+	assert(.COLOR in aspect_mask)
+	assert(.TRANSFER_DST in usage)
+	assert(.SAMPLED in usage)
 
 	usage := usage
 	if mip_levels > 1 do usage += {.TRANSFER_SRC}
@@ -1000,8 +1000,8 @@ vk_sampler_create :: proc(
 ) -> (
 	sampler: vk.Sampler
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	sampler_create_info: vk.SamplerCreateInfo = {
 		sType                   = .SAMPLER_CREATE_INFO,
@@ -1030,8 +1030,8 @@ vk_sampler_create :: proc(
 vk_sampler_destroy :: proc(
 	sampler: vk.Sampler
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk.DestroySampler(vk_context.device.logical, sampler, nil)
 }
@@ -1073,9 +1073,9 @@ vk_graphics_pipeline_create :: proc (
 	pipeline: vk.Pipeline,
 	pipeline_layout: vk.PipelineLayout
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(rendering_info != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(rendering_info != nil)
 	
 	pipeline_layout_create_info: vk.PipelineLayoutCreateInfo = {
 		sType                  = .PIPELINE_LAYOUT_CREATE_INFO,
@@ -1110,8 +1110,8 @@ vk_graphics_pipeline_destroy :: proc(
 	pipeline:        vk.Pipeline,
 	pipeline_layout: vk.PipelineLayout
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	vk.DestroyPipelineLayout(vk_context.device.logical, pipeline_layout, nil)
@@ -1130,8 +1130,8 @@ vk_command_pool_create :: proc(
 ) -> (
 	command_pool: VK_Command_Pool
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	command_pool.queue_type = queue_type
 
@@ -1149,8 +1149,8 @@ vk_command_pool_create :: proc(
 vk_command_pool_destroy :: proc(
 	command_pool: VK_Command_Pool
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	vk.DestroyCommandPool(vk_context.device.logical, command_pool.handle, nil)
 }
@@ -1166,9 +1166,9 @@ vk_command_buffer_create_single :: proc(
 ) -> (
 	command_buffer: VK_Command_Buffer
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(command_pool.handle != 0)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(command_pool.handle != 0)
 
 	command_buffer.command_pool = command_pool
 	
@@ -1192,9 +1192,9 @@ vk_command_buffer_create_slice :: proc(
 	command_buffers: []VK_Command_Buffer
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(command_pool.handle != 0)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(command_pool.handle != 0)
 
 	allocate_info: vk.CommandBufferAllocateInfo = {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
@@ -1219,8 +1219,8 @@ vk_command_buffer_destroy :: proc {
 vk_command_buffer_destroy_single :: proc(
 	command_buffer: VK_Command_Buffer
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	command_buffer := command_buffer
 	
@@ -1230,8 +1230,8 @@ vk_command_buffer_destroy_single :: proc(
 vk_command_buffer_destroy_slice :: proc(
 	command_buffers: []VK_Command_Buffer
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	for &command_buffer in command_buffers do vk.FreeCommandBuffers(vk_context.device.logical, command_buffer.command_pool.handle, 1, &command_buffer.handle)
 	delete(command_buffers)
@@ -1287,8 +1287,8 @@ vk_semaphore_create :: proc {
 vk_semaphore_create_single :: proc() -> (
 	semaphore: vk.Semaphore 
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	semaphore_create_info: vk.SemaphoreCreateInfo = { sType = .SEMAPHORE_CREATE_INFO }
 	vk_warn(vk.CreateSemaphore(vk_context.device.logical, &semaphore_create_info, nil, &semaphore))
@@ -1303,8 +1303,8 @@ vk_semaphore_create_slice :: proc(
 	semaphores: []vk.Semaphore
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	semaphore_create_info: vk.SemaphoreCreateInfo = { sType = .SEMAPHORE_CREATE_INFO }
 	semaphores = make([]vk.Semaphore, count)
@@ -1321,8 +1321,8 @@ vk_semaphore_destroy :: proc{
 vk_semaphore_destroy_single :: proc(
 	semaphore: vk.Semaphore
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
@@ -1331,8 +1331,8 @@ vk_semaphore_destroy_single :: proc(
 vk_semaphore_destroy_slice :: proc(
 	semaphores: []vk.Semaphore
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	for semaphore in semaphores do vk.DestroySemaphore(vk_context.device.logical, semaphore, nil)
@@ -1349,8 +1349,8 @@ vk_fence_create_single :: proc(
 ) -> (
 	fence: vk.Fence
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	fence_create_info: vk.FenceCreateInfo = {
 		sType = .FENCE_CREATE_INFO,
@@ -1371,8 +1371,8 @@ vk_fence_create_slice :: proc(
 	fences: []vk.Fence
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	fence_create_info: vk.FenceCreateInfo = {
 		sType = .FENCE_CREATE_INFO,
@@ -1394,8 +1394,8 @@ vk_fence_destroy :: proc{
 vk_fence_destroy_single :: proc(
 	fence: vk.Fence
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 	
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	vk.DestroyFence(vk_context.device.logical, fence, nil)
@@ -1404,8 +1404,8 @@ vk_fence_destroy_single :: proc(
 vk_fence_destroy_slice :: proc(
 	fences: []vk.Fence
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	vk_warn(vk.DeviceWaitIdle(vk_context.device.logical))
 	for fence in fences do vk.DestroyFence(vk_context.device.logical, fence, nil)
@@ -1420,9 +1420,9 @@ vk_swapchain_get_next_image_index :: proc(
 	image_index: u32
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_context.swapchain.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(vk_context.swapchain.initialised)
 
 	block_until := block_until
 
@@ -1458,8 +1458,8 @@ vk_queue_submit :: proc(
 	wait_for_stages: vk.PipelineStageFlags = {},
 	block_until:     vk.Fence              = 0,
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	command_buffer := command_buffer
 
@@ -1499,9 +1499,9 @@ vk_present :: proc(
 	allocator := context.allocator
 ) {
 	context.allocator = allocator
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_context.swapchain.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(vk_context.swapchain.initialised)
 
 	wait_render_finished := wait_render_finished
 	image_index          := image_index
@@ -1548,9 +1548,9 @@ vk_swapchain_get_image :: proc(
 ) -> (
 	image: ^VK_Image
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
-	ensure(index < u32(len(vk_context.swapchain.images)))
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
+	assert(index < u32(len(vk_context.swapchain.images)))
 
 	return &vk_context.swapchain.images[index]
 }
@@ -1560,9 +1560,9 @@ vk_swapchain_get_image_handle :: proc(
 ) -> (
 	handle: vk.Image
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
-	ensure(index < u32(len(vk_context.swapchain.images)))
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
+	assert(index < u32(len(vk_context.swapchain.images)))
 
 	return vk_context.swapchain.images[index].handle
 }
@@ -1572,9 +1572,9 @@ vk_swapchain_get_image_view :: proc(
 ) -> (
 	view: vk.ImageView
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
-	ensure(index < u32(len(vk_context.swapchain.images)))
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
+	assert(index < u32(len(vk_context.swapchain.images)))
 
 	return vk_context.swapchain.images[index].view
 }
@@ -1582,8 +1582,8 @@ vk_swapchain_get_image_view :: proc(
 vk_swapchain_get_image_format :: proc() -> (
 	format: vk.Format
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
 
 	return vk_context.swapchain.images[0].format
 }
@@ -1591,8 +1591,8 @@ vk_swapchain_get_image_format :: proc() -> (
 vk_swapchain_get_image_count :: proc() -> (
 	image_count: u32
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
 
 	return u32(len(vk_context.swapchain.images))
 }
@@ -1600,8 +1600,8 @@ vk_swapchain_get_image_count :: proc() -> (
 vk_swapchain_get_extent :: proc() -> (
 	extent: vk.Extent2D
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.swapchain.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.swapchain.initialised)
 
 	return vk_context.swapchain.attributes.extent
 }
@@ -1617,8 +1617,8 @@ vk_command_image_barrier :: proc(
 	src_stage_mask:    vk.PipelineStageFlags    = {},
 	dst_stage_mask:    vk.PipelineStageFlags    = {}
 ) {
-	ensure(vk_context.initialised)
-	ensure(image != nil)
+	assert(vk_context.initialised)
+	assert(image != nil)
 
 	barrier: vk.ImageMemoryBarrier = {
 		sType            = .IMAGE_MEMORY_BARRIER,
@@ -1785,7 +1785,7 @@ vk_vertex_description_create :: proc(
 		} else if field.type.size == 16 {
 			attribute_descriptions[i].format = .R32G32B32A32_SFLOAT
 		} else {
-			ensure(false)
+			assert(false)
 		}
 	}
 
@@ -1805,8 +1805,8 @@ vk_buffer_create :: proc(
 ) -> (
 	buffer: VK_Buffer
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
 
 	buffer.size = size
 
@@ -1853,7 +1853,7 @@ vk_buffer_create :: proc(
 	}
 
 	type_index := vk_memory_type_find_index(vk_context.device.physical, property_flags, memory_requirements.memoryTypeBits)
-	ensure(type_index != nil)
+	assert(type_index != nil)
 
 	allocate_info.memory_info.memoryTypeIndex = type_index.(u32)
 	buffer.vk_allocator = vk_allocator
@@ -1866,9 +1866,9 @@ vk_buffer_create :: proc(
 vk_buffer_destroy :: proc(
 	buffer: ^VK_Buffer
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(buffer != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(buffer != nil)
 	
 	buffer.vk_allocator->deallocate(&buffer.allocation)
 	vk.DestroyBuffer(vk_context.device.logical, buffer.handle, nil)
@@ -1884,7 +1884,7 @@ vk_uniform_buffer_create :: proc(
 ) -> (
 	uniform_buffer: VK_Buffer
 ) {
-	ensure(vk_allocator != nil)
+	assert(vk_allocator != nil)
 
 	uniform_buffer = vk_buffer_create(
 		size,
@@ -1983,8 +1983,8 @@ vk_buffer_copy_buffer :: proc(
 	dst_buffer:   ^VK_Buffer,
 	size:         vk.DeviceSize
 ) {
-	ensure(src_buffer != nil)
-	ensure(dst_buffer != nil)
+	assert(src_buffer != nil)
+	assert(dst_buffer != nil)
 	
 	copy_region: vk.BufferCopy = {
 		size      = size,
@@ -2005,10 +2005,10 @@ vk_buffer_copy_staged :: proc(
 	buffer_data:  rawptr,
 	vk_allocator: ^VK_Allocator
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(vk_allocator != nil)
-	ensure(buffer_data != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(vk_allocator != nil)
+	assert(buffer_data != nil)
 	
 	staging_buffer := vk_buffer_create(
 		buffer.size,
@@ -2038,10 +2038,10 @@ vk_buffer_copy_mapped :: proc(
 	buffer_data: rawptr,
 	flush:       bool = false
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(buffer != nil)
-	ensure(buffer_data != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(buffer != nil)
+	assert(buffer_data != nil)
 	
 	mem.copy(buffer.allocation.data, buffer_data, int(buffer.size))
 
@@ -2067,8 +2067,8 @@ vk_image_copy_buffer :: proc(
 	buffer:             ^VK_Buffer,
 	subresource_layers: vk.ImageSubresourceLayers = {{.COLOR}, 0, 0, 1}
 ) {
-	ensure(image != nil)
-	ensure(buffer != nil)
+	assert(image != nil)
+	assert(buffer != nil)
 
 	buffer_image_copy: vk.BufferImageCopy = {
 		bufferOffset = buffer.allocation.offset,
@@ -2089,11 +2089,11 @@ vk_image_copy_staged :: proc(
 	vk_allocator:       ^VK_Allocator,
 	subresource_layers: vk.ImageSubresourceLayers = {{.COLOR}, 0, 0, 1}
 ) {
-	ensure(vk_context.initialised)
-	ensure(vk_context.device.initialised)
-	ensure(image != nil)
-	ensure(image_data != nil)
-	ensure(vk_allocator != nil)
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+	assert(image != nil)
+	assert(image_data != nil)
+	assert(vk_allocator != nil)
 
 	image_size := len(image_data)
 

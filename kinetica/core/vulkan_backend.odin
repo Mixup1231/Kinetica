@@ -164,7 +164,7 @@ vk_init :: proc(
 	
 	vk_fatal(vk.EnumeratePhysicalDevices(vk_context.instance.handle, &physical_device_count, raw_data(physical_devices)))		
 
-	best_rating: u64
+	best_rating: u32
 	best_queue_indices: [VK_Queue_Type][2]u32
 	for physical_device in physical_devices {
 		valid, rating, queue_indices := vk_physical_device_rate(physical_device, &device_attributes)
@@ -280,7 +280,7 @@ vk_physical_device_rate :: proc(
 	allocator := context.allocator
 ) -> (
 	valid:             bool,
-	rating:            u64,
+	rating:            u32,
 	queue_indices:     [VK_Queue_Type][2]u32,
 ) {
 	context.allocator = allocator
@@ -433,17 +433,17 @@ vk_physical_device_rate :: proc(
 	vk.GetPhysicalDeviceFeatures(physical_device, &device_features)
 
 	// NOTE(Mitchell): We may want to play around with these numbers
-	rating += u64(device_properties.limits.maxImageDimension2D)
-	rating += u64(device_properties.limits.maxUniformBufferRange / 1024)
-	rating += u64(device_properties.limits.maxStorageBufferRange / 1024)
-	rating += u64(device_properties.limits.maxComputeSharedMemorySize / 512)
-	rating += u64(device_properties.limits.maxFramebufferWidth / 64)
-	rating += u64(device_properties.limits.maxFramebufferHeight / 64)
+	rating += device_properties.limits.maxImageDimension2D        / 1e4
+	rating += device_properties.limits.maxUniformBufferRange      / 1e6
+	rating += device_properties.limits.maxStorageBufferRange      / 1e9
+	rating += device_properties.limits.maxComputeSharedMemorySize / 1e9
 	
-	if device_properties.deviceType == .DISCRETE_GPU do rating += 1000
-	if device_features.samplerAnisotropy do rating += 1000
-	if device_features.geometryShader do rating += 100
-	if device_features.tessellationShader do rating += 100
+	if device_properties.deviceType == .DISCRETE_GPU do rating += 1e1
+	if device_features.samplerAnisotropy  do rating += 1
+	if device_features.geometryShader     do rating += 1
+	if device_features.tessellationShader do rating += 1
+
+	log.info("Vulken - Device:", transmute(cstring)&device_properties.deviceName[0], "rating:", rating)
 
 	return true, rating, queue_indices
 }
@@ -455,6 +455,7 @@ vk_swapchain_query_support :: proc(
 	support_details: VK_Swapchain_Support_Details
 ) {
 	context.allocator = allocator
+	ensure(vk_context.device.initialised)
 
 	vk_fatal(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.device.physical, vk_context.surface.handle, &support_details.capabilities))
 
@@ -654,7 +655,7 @@ vk_memory_type_find_index :: proc(
 ) -> (
 	memory_type_index: Maybe(u32)
 ) {
-	ensure(physical_device != nil)
+	assert(physical_device != nil)
 	
 	memory_properties: vk.PhysicalDeviceMemoryProperties
 	vk.GetPhysicalDeviceMemoryProperties(physical_device, &memory_properties)
