@@ -443,7 +443,7 @@ vk_physical_device_rate :: proc(
 	if device_features.geometryShader     do rating += 1
 	if device_features.tessellationShader do rating += 1
 
-	log.info("Vulken - Device:", transmute(cstring)&device_properties.deviceName[0], "rating:", rating)
+	log.info("Vulken - Device:", transmute(cstring)raw_data(device_properties.deviceName[:]), "rating:", rating)
 
 	return true, rating, queue_indices
 }
