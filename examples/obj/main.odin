@@ -211,7 +211,7 @@ application_create :: proc() {
 	core.vk_buffer_copy(transfer_pool, &index_buffer, raw_data(cube_indices[:]), &vk_allocator)
 
 	swapchain_format := core.vk_swapchain_get_image_format()
-	rendering_info   := core.vk_rendering_info_create({swapchain_format}, depth_format) 
+	rendering_info   := core.vk_rendering_info_create({swapchain_format}, depth_format)
 
 	binding_description, attribute_descriptions := core.vk_vertex_description_create(Vertex)
 	defer delete(attribute_descriptions)
