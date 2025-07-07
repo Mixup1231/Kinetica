@@ -55,7 +55,18 @@ resource_manager_destory :: proc() {
 		sparse_array_destroy(&texture_array)
 	}
 	
+	mesh_cold_slice := sparse_array_slice(&mesh_colds)
+	for &mesh_cold in mesh_cold_slice {
+		delete(mesh_cold.vertices)
+		delete(mesh_cold.indices)
+	}
 	sparse_array_destroy(&mesh_colds)
+
+	mesh_hot_slice := sparse_array_slice(&mesh_hots)
+	for &mesh_hot in mesh_hot_slice {
+		core.vk_buffer_destroy(&mesh_hot.vertex_buffer)
+		core.vk_buffer_destroy(&mesh_hot.index_buffer)
+	}
 	sparse_array_destroy(&mesh_hots)
 
 	delete(free_meshes)

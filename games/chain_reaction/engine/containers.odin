@@ -111,3 +111,32 @@ sparse_array_contains :: proc(
 
 	return key in sparse_array.key_to_index
 }
+
+sparse_array_slice :: proc{
+	sparse_array_slice_range,
+	sparse_array_slice_whole,
+}
+
+sparse_array_slice_range :: proc(
+	sparse_array: ^Sparse_Array($Key, $Value, $Capacity),
+	begin:        uint,
+	end:          uint,
+) -> (
+	slice: []Value
+) {
+	assert(sparse_array != nil)
+	assert(begin <= end)
+	assert(end < sparse_array.length)
+
+	return sparse_array.data[begin:end]
+}
+
+sparse_array_slice_whole :: proc(
+	sparse_array: ^Sparse_Array($Key, $Value, $Capacity),
+) -> (
+	slice: []Value
+) {
+	assert(sparse_array != nil)
+	
+	return sparse_array.data[:sparse_array.length]
+}
