@@ -1,15 +1,21 @@
 package engine
 
+import "core:log"
+
 import "../../../kinetica/core"
 
 import vk "vendor:vulkan"
 
 // NOTE(Mitchell): Remember to pad correctly!
 Renderer_Shader_Data :: struct #align(16) {
-	view_projection: matrix[4, 4]f32,
-	model_matrices:  [Max_Models]matrix[4, 4]f32,
-	lights:          [Max_Lights]Light,
-	texture_types:   Texture_Types,
+	view_projection:  matrix[4, 4]f32,
+	model_matrices:   [Max_Models]matrix[4, 4]f32,
+	lights:           [Max_Lights]Light,
+	camera_position:  [4]f32,
+	ambient_color:    [4]f32,
+	ambient_strength: f32,
+	light_count:      u32,
+	texture_types:    Texture_Types,
 }
 
 Renderer :: struct {
@@ -170,7 +176,18 @@ renderer_render_scene_swapchain :: proc(
 	shader_data.view_projection = core.camera_3d_get_view_projection(camera)
 
 	transform := core.transform_create()
+	core.transform_rotate(&transform, {1,0,0}, 3.14159265)
 	shader_data.model_matrices[0] = core.transform_get_matrix(&transform)
+
+	shader_data.camera_position = camera.position.xyzz
+	shader_data.ambient_color = {1, 1, 1, 1}
+	shader_data.ambient_strength = 0.01
+	
+	light := &shader_data.lights[0]
+	light.position = {0, -3, 0, 1}
+	light.color = {1, 0.2, 0.2, 1}	
+	
+	shader_data.light_count = 1
 	
 	core.vk_buffer_copy(transfer_pool, &ssbo, &shader_data, &vk_allocator)
 

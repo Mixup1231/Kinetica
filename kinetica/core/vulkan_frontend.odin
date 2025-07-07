@@ -2064,7 +2064,7 @@ vk_buffer_copy_staged :: proc(
 	assert(vk_context.device.initialised)
 	assert(vk_allocator != nil)
 	assert(buffer_data != nil)
-	
+
 	staging_buffer := vk_buffer_create(
 		buffer.size,
 		{.TRANSFER_SRC},

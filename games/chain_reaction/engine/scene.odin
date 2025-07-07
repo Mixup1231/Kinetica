@@ -9,5 +9,7 @@ Light :: struct #align(16) {
 }
 
 Scene :: struct {
-	mesh: Mesh
+	mesh: Mesh,
+	ambient_strength: f32,
+	ambient_color:    [3]f32,
 }
