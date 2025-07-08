@@ -46,11 +46,12 @@ main :: proc() {
 	scene := engine.scene_create()
 	defer engine.scene_destroy(&scene)
 
-	scene.ambient_strength = 0.01
+	scene.ambient_strength = 0
 	scene.ambient_color = {1, 1, 1}	
 	
 	one, _ := engine.scene_insert_entity(&scene)
 	transform := core.transform_create()
+	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
 	engine.scene_register_mesh_component(&scene, one, car_mesh, transform)
 	engine.scene_register_script_component(&scene, one, {update = car_update})
 
@@ -65,8 +66,8 @@ main :: proc() {
 	light.position = {1, -3, 0, 1}
 
 	_, light_two := engine.scene_insert_point_light(&scene)
-	light_two.color = {0.3, 0.3, 1, 1}
-	light_two.position = {2, 3, 0, 1}
+	light_two.color = {1, 0.1, 0.1, 1}
+	light_two.position = {0, 3, 0, 1}
 
 	camera = core.camera_3d_create(f32(800)/f32(600), speed = 2)
 
