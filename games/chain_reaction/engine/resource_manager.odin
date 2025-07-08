@@ -1,7 +1,7 @@
 package engine
 
-import "core:log"
 import "core:mem"
+import "core:log"
 
 import "../../../kinetica/core"
 import "../../../kinetica/extensions/obj"

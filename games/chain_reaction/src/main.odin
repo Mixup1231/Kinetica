@@ -40,8 +40,11 @@ main :: proc() {
 	engine.renderer_init()
 	defer engine.renderer_destroy()
 
-	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/test2.obj", {})
+	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/car.obj", {})
 	defer engine.resource_manager_destroy_mesh(car_mesh)
+	
+	gun_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/gun.obj", {})
+	defer engine.resource_manager_destroy_mesh(gun_mesh)
 
 	scene := engine.scene_create()
 	defer engine.scene_destroy(&scene)
@@ -57,8 +60,7 @@ main :: proc() {
 
 	two, _ := engine.scene_insert_entity(&scene)
 	core.transform_translate(&transform, {2, 0, 0})
-	transform.scale = {0.1, 0.1, 0.1}
-	engine.scene_register_mesh_component(&scene, two, car_mesh, transform)
+	engine.scene_register_mesh_component(&scene, two, gun_mesh, transform)
 	engine.scene_register_script_component(&scene, two, {update = car_two_update})
 
 	_, light := engine.scene_insert_point_light(&scene)

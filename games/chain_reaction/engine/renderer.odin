@@ -258,7 +258,7 @@ renderer_render_scene_swapchain :: proc(
 	core.vk_buffer_copy(transfer_pool, &cold_ssbo, &cold_data, &vk_allocator)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 0, &cold_ssbo)
 
-	instance_count: u32 = 0
+	instance_count, first_index: u32
 	for mesh, &entity_array in scene.meshes {
 		mesh_hot := resource_manager_get_mesh_hot(mesh)
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {mesh_hot.vertex_buffer.handle})
@@ -274,8 +274,8 @@ renderer_render_scene_swapchain :: proc(
 		core.vk_buffer_copy(transfer_pool, &hot_ssbo, &hot_data, &vk_allocator)
 		core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 1, &hot_ssbo)
 
-		core.vk_command_draw_indexed(command_buffers[frame], mesh_hot.index_count, instance_count)
-		instance_count = 0
+		core.vk_command_draw_indexed(command_buffers[frame], mesh_hot.index_count, instance_count, first_index)
+		first_index = instance_count - 1
 	}
 
 	core.vk_command_end_rendering(command_buffers[frame])
