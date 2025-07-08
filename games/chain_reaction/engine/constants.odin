@@ -13,4 +13,4 @@ Max_Models       :: Max_Entities
 
 // shared
 Max_Textures_Per_Type :: Max_Meshes
-Max_Lights            :: 8
+Max_Point_Lights      :: 8

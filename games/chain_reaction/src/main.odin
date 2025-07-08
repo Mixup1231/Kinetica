@@ -9,6 +9,22 @@ import "../../../kinetica/core"
 
 import "../engine"
 
+camera: core.Camera_3D
+
+car_update :: proc(dt: f32, car: ^engine.Entity) {
+	core.transform_rotate(&car.transform, {0, 1, 0}, dt)
+}
+
+car_two_update :: proc(dt: f32, car: ^engine.Entity) {
+	vecs := core.camera_3d_get_vectors(&camera)
+	vecs[.Front] = vecs[.Right].zyx
+	vecs[.Front].z *= -1
+	
+	transform := &car.transform
+	transform.position = la.lerp(transform.position, camera.position + vecs[.Front], dt)
+	core.transform_rotate(transform, {1, 1, 1}, dt)
+}
+	
 main :: proc() {
 	context.logger = log.create_console_logger()
 	defer log.destroy_console_logger(context.logger)
@@ -24,13 +40,35 @@ main :: proc() {
 	engine.renderer_init()
 	defer engine.renderer_destroy()
 
-	mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/test2.obj", {})
-	defer engine.resource_manager_destroy_mesh(mesh)
+	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/test2.obj", {})
+	defer engine.resource_manager_destroy_mesh(car_mesh)
 
-	scene: engine.Scene
-	scene.mesh = mesh
+	scene := engine.scene_create()
+	defer engine.scene_destroy(&scene)
 
-	camera := core.camera_3d_create(f32(800)/f32(600), speed = 2)
+	scene.ambient_strength = 0.01
+	scene.ambient_color = {1, 1, 1}	
+	
+	one, _ := engine.scene_insert_entity(&scene)
+	transform := core.transform_create()
+	engine.scene_register_mesh_component(&scene, one, car_mesh, transform)
+	engine.scene_register_script_component(&scene, one, {update = car_update})
+
+	two, _ := engine.scene_insert_entity(&scene)
+	core.transform_translate(&transform, {2, 0, 0})
+	transform.scale = {0.1, 0.1, 0.1}
+	engine.scene_register_mesh_component(&scene, two, car_mesh, transform)
+	engine.scene_register_script_component(&scene, two, {update = car_two_update})
+
+	_, light := engine.scene_insert_point_light(&scene)
+	light.color = {1, 1, 1, 1}
+	light.position = {1, -3, 0, 1}
+
+	_, light_two := engine.scene_insert_point_light(&scene)
+	light_two.color = {0.3, 0.3, 1, 1}
+	light_two.position = {2, 3, 0, 1}
+
+	camera = core.camera_3d_create(f32(800)/f32(600), speed = 2)
 
 	dt: f32
 	start, end: time.Tick
@@ -41,6 +79,8 @@ main :: proc() {
 
 		dt = f32(time.duration_seconds(time.tick_diff(start, end)))
 		start = time.tick_now()
+		
+		engine.scene_update_entities(&scene, dt)
 
 		vecs := core.camera_3d_get_vectors(&camera)
 		vecs[.Front] = vecs[.Right].zyx

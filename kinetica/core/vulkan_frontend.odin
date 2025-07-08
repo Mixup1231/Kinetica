@@ -354,18 +354,18 @@ vk_descriptor_set_update_uniform_buffer :: proc(
 vk_descriptor_set_update_storage_buffer :: proc(
 	descriptor_set: vk.DescriptorSet,
 	binding:        u32,
-	uniform_buffer: ^VK_Buffer,
+	storage_buffer: ^VK_Buffer,
 	offset:         vk.DeviceSize = 0,     
 	array_element:  u32           = 0
 ) {
 	assert(vk_context.initialised)
 	assert(vk_context.device.initialised)
-	assert(uniform_buffer != nil)
+	assert(storage_buffer != nil)
 
 	descriptor_buffer_info: vk.DescriptorBufferInfo = {
-		buffer = uniform_buffer.handle,
+		buffer = storage_buffer.handle,
 		offset = offset,
-		range  = uniform_buffer.size
+		range  = storage_buffer.size
 	}
 
 	write_desriptor_set: vk.WriteDescriptorSet = {
