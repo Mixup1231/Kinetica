@@ -21,12 +21,6 @@ Line_Type :: enum {
 	Invalid,
 }
 
-Face_Type :: enum {
-	Triangle,
-	Quad,
-	Invalid,
-}
-
 Vertex_Attributes :: distinct bit_set[Vertex_Attribute]
 Vertex_Attribute :: enum {
 	Position,
@@ -177,19 +171,6 @@ parse_texture_coordinates :: proc(
 	)
 }
 
-get_face_type :: proc(
-	tokens: []string
-) -> (
-	face_type: Face_Type
-) {
-	assert(get_line_type(tokens[0]) == .Face)
-
-	if len(tokens[1:]) == 3 do return .Triangle
-	if len(tokens[1:]) == 4 do return .Quad
-
-	return .Invalid
-}
-
 parse_face_token :: proc(
 	face_token: string,
 	group:      ^Group,
@@ -293,33 +274,13 @@ read_file :: proc(
 				object.groups[current_group] = Group{make([dynamic][3]u32), Vertex_Attributes{}}
 			}
 
-			face_type := get_face_type(tokens)
-
-			#partial switch (face_type) {
-			case .Triangle:
-				for token in tokens[1:] {
-					object := &file.objects[current_object]
-					group := &object.groups[current_group]
-					parse_face_token(token, group)
-				}
-			case .Quad:
-				// f 1 2 3 4 -> f 1 2 3, f 1 3 4
-				// f 1 2 3
-				for token in tokens[1:len(tokens)-1] {
-					object := &file.objects[current_object]
-					group := &object.groups[current_group]
-					parse_face_token(token, group)
-				}
-				
-				tokens[2] = tokens[3] // 2 -> 3
-				tokens[3] = tokens[4] // 3 -> 4
-				
-				// f 1 3 4
-				for token in tokens[1:len(tokens)-1] {
-					object := &file.objects[current_object]
-					group := &object.groups[current_group]
-					parse_face_token(token, group)
-				}
+			object := &file.objects[current_object]
+			group := &object.groups[current_group]
+			
+			for i = 3; i < u32(len(tokens)); i += 1 {
+				parse_face_token(tokens[1], group)
+				parse_face_token(tokens[i-1], group)
+				parse_face_token(tokens[i], group)
 			}
 		case .Position:
 			parse_positions(tokens[1:], &file.positions)			

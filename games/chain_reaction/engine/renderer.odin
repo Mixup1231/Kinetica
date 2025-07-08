@@ -211,7 +211,6 @@ renderer_render_scene_swapchain :: proc(
 		dst_stage_mask    = {.EARLY_FRAGMENT_TESTS},
 		subresource_range = {{.DEPTH}, 0, 1, 0, 1}
 	)
-
 	depth_attachment := core.vk_depth_attachment_create(depth_image.view)
 	
 	core.vk_command_begin_rendering(
@@ -245,7 +244,6 @@ renderer_render_scene_swapchain :: proc(
 			extent = extent
 		}}
 	)
-	
 	core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
 	core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
 	
@@ -262,6 +260,7 @@ renderer_render_scene_swapchain :: proc(
 	instance_index, mesh_index: u32
 	for mesh, &entity_array in scene.meshes {
 		instance_ranges[mesh_index][0] = instance_index
+		
 		for entity_id in sparse_array_slice(&entity_array) {
 			entity := sparse_array_get(&scene.entities, entity_id)
 			hot_data.model_matrices[instance_index] = core.transform_get_matrix(&entity.transform)
@@ -270,7 +269,6 @@ renderer_render_scene_swapchain :: proc(
 		instance_ranges[mesh_index][1] = instance_index - instance_ranges[mesh_index][0]
 		mesh_index += 1
 	}
-	
 	core.vk_buffer_copy(transfer_pool, &hot_ssbo, &hot_data, &vk_allocator)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 1, &hot_ssbo)
 
@@ -279,7 +277,13 @@ renderer_render_scene_swapchain :: proc(
 		mesh_hot := resource_manager_get_mesh_hot(mesh)
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {mesh_hot.vertex_buffer.handle})
 		core.vk_command_index_buffer_bind(command_buffers[frame], mesh_hot.index_buffer.handle)
-		core.vk_command_draw_indexed(command_buffers[frame], mesh_hot.index_count, instance_ranges[mesh_index][1], first_instance = instance_ranges[mesh_index][0])
+		
+		core.vk_command_draw_indexed(
+			command_buffer = command_buffers[frame],
+			index_count    = mesh_hot.index_count,
+			instance_count = instance_ranges[mesh_index][1],
+			first_instance = instance_ranges[mesh_index][0]
+		)
 		mesh_index += 1
 	}
 
@@ -294,7 +298,6 @@ renderer_render_scene_swapchain :: proc(
 		old_layout      = .COLOR_ATTACHMENT_OPTIMAL,
 		new_layout      = .PRESENT_SRC_KHR,			
 	)
-	
 	core.vk_command_buffer_end(command_buffers[frame])
 
 	core.vk_queue_submit(
@@ -304,7 +307,6 @@ renderer_render_scene_swapchain :: proc(
 		{.COLOR_ATTACHMENT_OUTPUT},
 		block_until[frame]
 	)
-
 	core.vk_present(render_finished[index], index)		
 }
 
