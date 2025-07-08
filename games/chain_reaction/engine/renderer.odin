@@ -259,28 +259,28 @@ renderer_render_scene_swapchain :: proc(
 	core.vk_buffer_copy(transfer_pool, &cold_ssbo, &cold_data, &vk_allocator)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 0, &cold_ssbo)
 
-	instance_count, mesh_count: u32
+	instance_index, mesh_index: u32
 	for mesh, &entity_array in scene.meshes {
-		instance_ranges[mesh_count][0] = instance_count
+		instance_ranges[mesh_index][0] = instance_index
 		for entity_id in sparse_array_slice(&entity_array) {
 			entity := sparse_array_get(&scene.entities, entity_id)
-			hot_data.model_matrices[instance_count] = core.transform_get_matrix(&entity.transform)
-			instance_count += 1
+			hot_data.model_matrices[instance_index] = core.transform_get_matrix(&entity.transform)
+			instance_index += 1
 		}
-		instance_ranges[mesh_count][1] = instance_count - instance_ranges[mesh_count][0]
-		mesh_count += 1
+		instance_ranges[mesh_index][1] = instance_index - instance_ranges[mesh_index][0]
+		mesh_index += 1
 	}
 	
 	core.vk_buffer_copy(transfer_pool, &hot_ssbo, &hot_data, &vk_allocator)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 1, &hot_ssbo)
 
-	mesh_count = 0
+	mesh_index = 0
 	for mesh, _ in scene.meshes {
 		mesh_hot := resource_manager_get_mesh_hot(mesh)
 		core.vk_command_vertex_buffers_bind(command_buffers[frame], {mesh_hot.vertex_buffer.handle})
 		core.vk_command_index_buffer_bind(command_buffers[frame], mesh_hot.index_buffer.handle)
-		core.vk_command_draw_indexed(command_buffers[frame], mesh_hot.index_count, instance_ranges[mesh_count][1], first_instance = instance_ranges[mesh_count][0])
-		mesh_count += 1
+		core.vk_command_draw_indexed(command_buffers[frame], mesh_hot.index_count, instance_ranges[mesh_index][1], first_instance = instance_ranges[mesh_index][0])
+		mesh_index += 1
 	}
 
 	core.vk_command_end_rendering(command_buffers[frame])
