@@ -62,7 +62,7 @@ VK_Swapchain :: struct {
 	images:          []VK_Image,
 	attributes:      VK_Swapchain_Attributes,
 	support_details: VK_Swapchain_Support_Details,
-	on_recreation:   proc(vk.Extent2D),
+	on_recreation:   [dynamic]proc(vk.Extent2D),
 
 	initialised: bool,
 }
@@ -261,6 +261,7 @@ vk_destroy :: proc() {
 	delete(vk_context.swapchain.images)
 	delete(vk_context.swapchain.support_details.formats)
 	delete(vk_context.swapchain.support_details.present_modes)
+	delete(vk_context.swapchain.on_recreation)
 
 	// device
 	vk_context.device.initialised = false
@@ -611,6 +612,8 @@ vk_swapchain_create :: proc(
 		log.info("Vulkan: Successfully created swapchain image-view", i+1)
 	}
 
+	if swapchain.on_recreation == nil do swapchain.on_recreation = make([dynamic]proc(vk.Extent2D))
+	
 	vk_context.swapchain.initialised = true
 }
 
@@ -644,8 +647,8 @@ vk_swapchain_recreate :: proc(
 	vk.DeviceWaitIdle(vk_context.device.logical)
 	vk_swapchain_destroy()
 	vk_swapchain_create(&attributes)
-	
-	if vk_context.swapchain.on_recreation != nil do vk_context.swapchain.on_recreation(attributes.extent)
+
+	for on_recreation in vk_context.swapchain.on_recreation do on_recreation(attributes.extent)
 }
 
 vk_memory_type_find_index :: proc(

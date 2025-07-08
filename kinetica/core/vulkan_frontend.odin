@@ -633,8 +633,8 @@ vk_swapchain_set_recreation_callback :: proc(
 ) {
 	assert(vk_context.initialised)
 	assert(vk_context.swapchain.initialised)
-	
-	vk_context.swapchain.on_recreation = callback
+
+	append(&vk_context.swapchain.on_recreation, callback)
 }
 
 vk_image_find_supported_format :: proc(

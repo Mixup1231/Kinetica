@@ -6,8 +6,9 @@ import "core:time"
 import la "core:math/linalg"
 
 import "../../../kinetica/core"
-
 import "../engine"
+
+import vk "vendor:vulkan"
 
 camera: core.Camera_3D
 
@@ -24,6 +25,12 @@ car_two_update :: proc(dt: f32, car: ^engine.Entity) {
 	transform.position = la.lerp(transform.position, camera.position + vecs[.Front], dt)
 	core.transform_rotate(transform, {1, 1, 1}, dt)
 }
+
+update_camera_projection :: proc(
+	extent: vk.Extent2D
+) {
+	core.camera_3d_set_projection(&camera, la.PI/4, f32(extent.width)/f32(extent.height), 0.1, 100)
+}
 	
 main :: proc() {
 	context.logger = log.create_console_logger()
@@ -31,6 +38,8 @@ main :: proc() {
 	
 	core.window_create(800, 600, "Oh my Gourd!")
 	defer core.window_destroy()
+
+	core.vk_swapchain_set_recreation_callback(update_camera_projection)
 	
 	core.input_set_mouse_mode(.Locked)
 
@@ -60,6 +69,7 @@ main :: proc() {
 
 	two, _ := engine.scene_insert_entity(&scene)
 	core.transform_translate(&transform, {2, 0, 0})
+	core.transform_scale(&transform, {0.1, 0.1, 0.1})
 	engine.scene_register_mesh_component(&scene, two, gun_mesh, transform)
 	engine.scene_register_script_component(&scene, two, {update = car_two_update})
 
@@ -79,6 +89,14 @@ main :: proc() {
 		core.window_poll()
 		
 		if core.input_is_key_pressed(.Key_Escape) do core.window_set_should_close(true)
+
+		if core.input_is_key_pressed(.Key_I) do core.window_go_fullscreen()
+		if core.input_is_key_released(.Key_I) do core.window_go_windowed(800, 600)
+		
+		if core.input_is_key_pressed(.Key_J) {
+			monitor_details := core.window_get_primary_monitor_details()
+			log.info(monitor_details)
+		}
 
 		dt = f32(time.duration_seconds(time.tick_diff(start, end)))
 		start = time.tick_now()

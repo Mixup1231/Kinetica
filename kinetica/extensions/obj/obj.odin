@@ -1,7 +1,6 @@
 package obj
 
 // TODO(Mitchell):
-// Add way to triangulate quads?
 // Add material support
 
 import "core:os"

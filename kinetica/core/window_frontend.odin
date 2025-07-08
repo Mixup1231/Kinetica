@@ -1,7 +1,21 @@
 package core
 
+import "core:log"
+
 import "vendor:glfw"
 import vk "vendor:vulkan"
+
+Monitor_Type :: enum {
+	Primary,
+	Secondary,
+}
+
+Monitor_Details :: struct {
+	width:        i32,
+	height:       i32,
+	refresh_rate: i32,
+	type:         Monitor_Type,
+}
 
 window_create :: proc(
 	width:       i32,
@@ -133,6 +147,58 @@ window_wait_events :: proc() {
 	ensure(glfw_context.initialised)
 
 	glfw.WaitEvents()
+}
+
+window_go_fullscreen :: proc() {
+	ensure(glfw_context.initialised)
+
+	monitor := glfw.GetPrimaryMonitor()
+	video_mode := glfw.GetVideoMode(monitor)
+	
+	glfw.SetWindowMonitor(
+		glfw_context.handle,
+		monitor,
+		0, 0,
+		video_mode.width, video_mode.height,
+		video_mode.refresh_rate
+	)
+}
+
+window_go_windowed :: proc(
+	width:  i32,
+	height: i32
+) {
+	ensure(glfw_context.initialised)
+
+	video_mode := glfw.GetVideoMode(glfw.GetPrimaryMonitor())
+	x: i32 = i32(f32(video_mode.width) / 2 - f32(width) / 2)
+	y: i32 = i32(f32(video_mode.height) / 2 - f32(height) / 2)
+
+	glfw.SetWindowMonitor(
+		glfw_context.handle,
+		nil,
+		x, y,
+		width, height,
+		0
+	)
+}
+
+window_get_primary_monitor_details :: proc() -> (
+	monitor_details: Monitor_Details
+) {
+	ensure(glfw_context.initialised)
+
+	primary_monitor := glfw.GetPrimaryMonitor()	
+	video_mode := glfw.GetVideoMode(primary_monitor)
+	
+	monitor_details = {
+		width        = video_mode.width,
+		height       = video_mode.height,
+		refresh_rate = video_mode.refresh_rate,
+		type         = .Primary
+	}
+
+	return monitor_details
 }
 
 window_get_handle :: proc() -> (

@@ -258,6 +258,7 @@ renderer_render_scene_swapchain :: proc(
 	core.vk_buffer_copy(transfer_pool, &cold_ssbo, &cold_data, &vk_allocator)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 0, &cold_ssbo)
 
+	// NOTE(Mitchell): This is bugged, fix it
 	instance_count, first_index: u32
 	for mesh, &entity_array in scene.meshes {
 		mesh_hot := resource_manager_get_mesh_hot(mesh)
