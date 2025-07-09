@@ -23,7 +23,7 @@ car_two_update :: proc(dt: f32, car: ^engine.Entity) {
 	
 	transform := &car.transform
 	transform.position = la.lerp(transform.position, camera.position + vecs[.Front], dt)
-	core.transform_rotate(transform, {1, 1, 1}, dt)
+	core.transform_rotate(transform, {1, 0, 1}, dt)
 }
 
 update_camera_projection :: proc(
@@ -75,27 +75,34 @@ main :: proc() {
 
 	_, light := engine.scene_insert_point_light(&scene)
 	light.color = {1, 1, 1, 1}
-	light.position = {1, -3, 0, 1}
-
+	light.position = {0, -3, 0, 1}
+	
 	_, light_two := engine.scene_insert_point_light(&scene)
-	light_two.color = {1, 0.1, 0.1, 1}
+	light_two.color = {1, 0.2, 0.2, 1}
 	light_two.position = {0, 3, 0, 1}
 
 	camera = core.camera_3d_create(f32(800)/f32(600), speed = 2)
 
-	dt: f32
+	fs: bool
+	dt, pixel_size, max_pixel_size: f32 = 0, 7, 8
 	start, end: time.Tick
 	for !core.window_should_close() {
 		core.window_poll()
 		
 		if core.input_is_key_pressed(.Key_Escape) do core.window_set_should_close(true)
 
-		if core.input_is_key_pressed(.Key_I) do core.window_go_fullscreen()
-		if core.input_is_key_released(.Key_I) do core.window_go_windowed(800, 600)
-		
-		if core.input_is_key_pressed(.Key_J) {
-			monitor_details := core.window_get_primary_monitor_details()
-			log.info(monitor_details)
+		if core.input_is_key_pressed(.Key_I) {
+			fs = !fs
+			if fs {
+				core.window_go_fullscreen()
+			} else {
+				core.window_go_windowed(800, 600)
+			}
+		}
+
+		if core.input_is_key_pressed(.Key_N) {
+			pixel_size = f32(int(pixel_size + 1) % int(max_pixel_size))
+			engine.renderer_set_pixelation(pixel_size + 1)
 		}
 
 		dt = f32(time.duration_seconds(time.tick_diff(start, end)))
@@ -124,12 +131,6 @@ main :: proc() {
 		}
 		if core.input_is_key_held(.Key_Left_Shift) {
 			camera.position += {0, 1, 0} * dt * camera.speed
-		}
-		if core.input_is_key_pressed(.Key_C) {
-			core.camera_3d_set_fovy(&camera, la.to_radians(f32(20)))
-		}
-		if core.input_is_key_released(.Key_C) {
-			core.camera_3d_set_fovy(&camera, la.to_radians(f32(60)))
 		}
 		
 		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())

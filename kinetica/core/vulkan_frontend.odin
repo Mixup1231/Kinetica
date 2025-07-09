@@ -1642,8 +1642,8 @@ vk_command_image_barrier :: proc(
 	old_layout:        vk.ImageLayout           = .UNDEFINED,
 	new_layout:        vk.ImageLayout           = .UNDEFINED,
 	subresource_range: vk.ImageSubresourceRange = {{.COLOR}, 0, 1, 0, 1},
-	src_stage_mask:    vk.PipelineStageFlags    = {},
-	dst_stage_mask:    vk.PipelineStageFlags    = {}
+	src_stage_mask:    vk.PipelineStageFlags    = {.ALL_COMMANDS},
+	dst_stage_mask:    vk.PipelineStageFlags    = {.ALL_COMMANDS}
 ) {
 	assert(vk_context.initialised)
 	assert(image != nil)

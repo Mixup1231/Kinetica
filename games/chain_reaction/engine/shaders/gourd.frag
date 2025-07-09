@@ -67,5 +67,12 @@ void main() {
     vec3 diffuse = calculate_diffuse();
     vec3 specular = calculate_specular();
 
-    o_color = vec4(ambient + diffuse + specular, 1.0) * vec4(1.0, 1.0, 1.0, 1.0);
+    float distance = length(i_fragment_position - camera_position.xyz);
+    float fog_factor = 1.0 - exp(-pow(distance * 0.2, 2.0));
+    vec3 fog_color = vec3(0.0, 0.0, 0.0);
+    
+    vec3 result = (ambient + diffuse + specular) * vec3(1.0, 1.0, 1.0);
+    vec3 final_color = mix(result, fog_color, fog_factor);
+
+    o_color = vec4(final_color, 1.0);
 }

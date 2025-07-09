@@ -22,14 +22,21 @@ Shader_Hot_Data :: struct #align(16) {
 	texture_types:     Texture_Types,
 }
 
+Shader_Pixel_Data :: struct {
+	resolution: [2]f32,
+	pixel_size: f32,
+}
+
 Renderer :: struct {
-	frame:             u32,
-	graphics_pool:     core.VK_Command_Pool,
-	transfer_pool:     core.VK_Command_Pool,
-	command_buffers:   []core.VK_Command_Buffer,
-	image_available:   []vk.Semaphore,
-	render_finished:   []vk.Semaphore,
-	block_until:       []vk.Fence,
+	frame:           u32,
+	graphics_pool:   core.VK_Command_Pool,
+	transfer_pool:   core.VK_Command_Pool,
+	command_buffers: []core.VK_Command_Buffer,
+	image_available: []vk.Semaphore,
+	render_finished: []vk.Semaphore,
+	block_until:     []vk.Fence,
+	vk_allocator:    core.VK_Allocator,
+	
 	descriptor_pool:   vk.DescriptorPool,
 	descriptor_layout: vk.DescriptorSetLayout,
 	descriptor_sets:   []vk.DescriptorSet,
@@ -43,8 +50,21 @@ Renderer :: struct {
 	instance_ranges:   [Max_Meshes][2]u32,
 	pipeline:          vk.Pipeline,
 	pipeline_layout:   vk.PipelineLayout,
-	vk_allocator:      core.VK_Allocator,
-
+	
+	quad_vertices:           [4]Vertex,
+	quad_indices:            [6]u32,
+	quad_vertex_buffer:      core.VK_Buffer,
+	quad_index_buffer:       core.VK_Buffer,
+	pixel_sampler:           vk.Sampler,
+	pixel_image:             core.VK_Image,
+	pixel_data:              Shader_Pixel_Data,
+	pixel_ubo:               core.VK_Buffer,
+	pixel_descriptor_pool:   vk.DescriptorPool,
+	pixel_descriptor_layout: vk.DescriptorSetLayout,
+	pixel_descriptor_sets:   []vk.DescriptorSet,
+	pixel_pipeline_layout:   vk.PipelineLayout,
+	pixel_pipeline:          vk.Pipeline,
+	
 	initialised: bool,
 }
 
@@ -68,8 +88,6 @@ renderer_init :: proc() {
 	render_finished = core.vk_semaphore_create(swapchain_image_count)
 	
 	depth_format = .D32_SFLOAT
-	recreate_depth_image(core.vk_swapchain_get_extent())
-	core.vk_swapchain_set_recreation_callback(recreate_depth_image)
 
 	cold_ssbo = core.vk_storage_buffer_create(size_of(Shader_Cold_Data), &vk_allocator)
 	hot_ssbo = core.vk_storage_buffer_create(size_of(Shader_Hot_Data), &vk_allocator)
@@ -151,7 +169,93 @@ renderer_init :: proc() {
 		},
 		{descriptor_layout}
 	)
+	
+	pixel_ubo = core.vk_uniform_buffer_create(size_of(Shader_Pixel_Data), &vk_allocator)
 
+	pixel_sampler = core.vk_sampler_create()
+
+	quad_vertices = {
+		{
+			position = {-1, -1, 0},
+			uv       = {0, 0}
+		},
+		{
+			position = {1, -1, 0},
+			uv       = {1, 0}
+		},
+		{
+			position = {1, 1, 0},
+			uv       = {1, 1}
+		},
+		{
+			position = {-1, 1, 0},
+			uv       = {0, 1}
+		}
+	}
+
+	quad_indices = {
+		0, 1, 2,
+		2, 3, 0
+	}
+
+	quad_vertex_buffer = core.vk_vertex_buffer_create(size_of(Vertex) * len(quad_vertices), &vk_allocator)
+
+	core.vk_buffer_copy(transfer_pool, &quad_vertex_buffer, raw_data(quad_vertices[:]), &vk_allocator)
+	
+	quad_index_buffer = core.vk_index_buffer_create(size_of(u32) * len(quad_indices), &vk_allocator)
+	
+	core.vk_buffer_copy(transfer_pool, &quad_index_buffer, raw_data(quad_indices[:]), &vk_allocator)
+	
+	pixel_vertex_module := core.vk_shader_module_create("./games/chain_reaction/engine/shaders/gourd_pixel.vert.spv")
+	defer core.vk_shader_module_destroy(pixel_vertex_module)
+	
+	pixel_fragment_module := core.vk_shader_module_create("./games/chain_reaction/engine/shaders/gourd_pixel.frag.spv")
+	defer core.vk_shader_module_destroy(pixel_fragment_module)
+
+	pixel_descriptor_pool = core.vk_descriptor_pool_create({.UNIFORM_BUFFER, .COMBINED_IMAGE_SAMPLER}, {Frames_In_Flight, Frames_In_Flight}, Frames_In_Flight)
+
+	pixel_descriptor_layout = core.vk_descriptor_set_layout_create(
+		{
+			{
+				binding         = 0,
+				descriptorType  = .UNIFORM_BUFFER,
+				descriptorCount = 1,
+				stageFlags      = {.FRAGMENT}
+			},
+			{
+				binding         = 1,
+				descriptorType  = .COMBINED_IMAGE_SAMPLER,
+				descriptorCount = 1,
+				stageFlags      = {.FRAGMENT}
+			}
+		}
+	)
+	pixel_descriptor_layouts: [Frames_In_Flight]vk.DescriptorSetLayout
+	for &layout in pixel_descriptor_layouts do layout = pixel_descriptor_layout
+	
+	pixel_descriptor_sets = core.vk_descriptor_set_create(pixel_descriptor_pool, pixel_descriptor_layouts[:])
+	
+	pixel_pipeline, pixel_pipeline_layout = core.vk_graphics_pipeline_create(
+		&rendering_info,
+		&vertex_input_state,
+		&input_assembly_state,
+		&viewport_state,
+		&rasterizer_state,
+		&multisample_state,
+		nil,
+		&color_blend_state,
+		&dynamic_state,
+		{
+			core.vk_shader_stage_state_create({.VERTEX}, pixel_vertex_module, "main"),
+			core.vk_shader_stage_state_create({.FRAGMENT}, pixel_fragment_module, "main"),
+		},
+		{pixel_descriptor_layout}
+	)
+
+	pixel_data.pixel_size = 8
+	recreate_pipeline_images(core.vk_swapchain_get_extent())
+	core.vk_swapchain_set_recreation_callback(recreate_pipeline_images)
+	
 	initialised = true
 }
 
@@ -165,6 +269,11 @@ renderer_destroy :: proc() {
 	core.vk_semaphore_destroy(image_available)
 	core.vk_semaphore_destroy(render_finished)
 	core.vk_fence_destroy(block_until)
+	
+	core.vk_sampler_destroy(pixel_sampler)
+	core.vk_buffer_destroy(&quad_vertex_buffer)
+	core.vk_buffer_destroy(&quad_index_buffer)
+	core.vk_buffer_destroy(&pixel_ubo)
 	core.vk_descriptor_set_destroy(descriptor_pool, descriptor_sets[:])
 	core.vk_descriptor_pool_destroy(descriptor_pool)
 	core.vk_descriptor_set_layout_destroy(descriptor_layout)
@@ -172,8 +281,22 @@ renderer_destroy :: proc() {
 	core.vk_buffer_destroy(&cold_ssbo)
 	core.vk_image_destroy(&depth_image)
 	core.vk_graphics_pipeline_destroy(pipeline, pipeline_layout)
+
+	core.vk_image_destroy(&pixel_image)
+	core.vk_descriptor_set_destroy(pixel_descriptor_pool, pixel_descriptor_sets[:])
+	core.vk_descriptor_pool_destroy(pixel_descriptor_pool)
+	core.vk_descriptor_set_layout_destroy(pixel_descriptor_layout)
+	core.vk_graphics_pipeline_destroy(pixel_pipeline, pixel_pipeline_layout)
 	
 	initialised = false
+}
+
+renderer_set_pixelation :: proc(
+	pixel_size: f32
+) {
+	using renderer
+	pixel_data.pixel_size = pixel_size
+	core.vk_buffer_copy(transfer_pool, &pixel_ubo, &pixel_data, &vk_allocator)
 }
 
 renderer_render_scene_swapchain :: proc(
@@ -190,16 +313,14 @@ renderer_render_scene_swapchain :: proc(
 	
 	core.vk_command_buffer_reset(command_buffers[frame])
 	core.vk_command_buffer_begin(command_buffers[frame])
-
+	
 	core.vk_command_image_barrier(
 		command_buffer  = command_buffers[frame],
-		image           = core.vk_swapchain_get_image(index),
+		image           = &pixel_image,
 		dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
 		old_layout      = .UNDEFINED,
 		new_layout      = .COLOR_ATTACHMENT_OPTIMAL,
-		src_stage_mask  = {.TOP_OF_PIPE},
-		dst_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
-	)	
+	)
 
 	core.vk_command_image_barrier(
 		command_buffers[frame],
@@ -207,8 +328,6 @@ renderer_render_scene_swapchain :: proc(
 		dst_access_mask   = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
 		old_layout        = .UNDEFINED,
 		new_layout        = .DEPTH_ATTACHMENT_OPTIMAL,
-		src_stage_mask    = {.TOP_OF_PIPE},
-		dst_stage_mask    = {.EARLY_FRAGMENT_TESTS},
 		subresource_range = {{.DEPTH}, 0, 1, 0, 1}
 	)
 	depth_attachment := core.vk_depth_attachment_create(depth_image.view)
@@ -220,7 +339,7 @@ renderer_render_scene_swapchain :: proc(
 			extent = extent
 		},
 		color_attachments = {
-			core.vk_color_attachment_create(core.vk_swapchain_get_image_view(index))
+			core.vk_color_attachment_create(pixel_image.view)
 		},
 		depth_attachment = &depth_attachment
 	)
@@ -245,7 +364,6 @@ renderer_render_scene_swapchain :: proc(
 		}}
 	)
 	core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
-	core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
 	
 	cold_data.view_projection = core.camera_3d_get_view_projection(camera)
 	cold_data.camera_position = camera.position.xyzz
@@ -271,6 +389,8 @@ renderer_render_scene_swapchain :: proc(
 	}
 	core.vk_buffer_copy(transfer_pool, &hot_ssbo, &hot_data, &vk_allocator)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 1, &hot_ssbo)
+	
+	core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
 
 	mesh_index = 0
 	for mesh, _ in scene.meshes {
@@ -288,16 +408,70 @@ renderer_render_scene_swapchain :: proc(
 	}
 
 	core.vk_command_end_rendering(command_buffers[frame])
+
+	core.vk_command_image_barrier(
+		command_buffer  = command_buffers[frame],
+		image           = &pixel_image,
+		src_access_mask = {.COLOR_ATTACHMENT_WRITE},
+		dst_access_mask = {.SHADER_READ},
+		old_layout      = .COLOR_ATTACHMENT_OPTIMAL,
+		new_layout      = .SHADER_READ_ONLY_OPTIMAL,
+	)
+
+	core.vk_command_image_barrier(
+		command_buffer  = command_buffers[frame],
+		image           = core.vk_swapchain_get_image(index),
+		dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
+		old_layout      = .PRESENT_SRC_KHR,
+		new_layout      = .COLOR_ATTACHMENT_OPTIMAL,
+	)
+	
+	core.vk_command_begin_rendering(
+		command_buffer = command_buffers[frame],
+		render_area = {
+			offset = {0, 0},
+			extent = extent
+		},
+		color_attachments = {
+			core.vk_color_attachment_create(core.vk_swapchain_get_image_view(index))
+		}
+	)
+	
+	core.vk_command_viewport_set(
+		command_buffers[frame],
+		{{
+			x        = 0,
+			y        = 0,
+			width    = f32(extent.width),
+			height   = f32(extent.height),
+		}}
+	)
+
+	core.vk_command_scissor_set(
+		command_buffers[frame],
+		{{
+			offset = {0, 0},
+			extent = extent
+		}}
+	)
+
+	core.vk_command_graphics_pipeline_bind(command_buffers[frame], pixel_pipeline)
+	core.vk_descriptor_set_update_uniform_buffer(pixel_descriptor_sets[frame], 0, &pixel_ubo)
+	core.vk_descriptor_set_update_image(pixel_descriptor_sets[frame], 1, &pixel_image, pixel_sampler)
+	core.vk_command_descriptor_set_bind(command_buffers[frame], pixel_pipeline_layout, .GRAPHICS, pixel_descriptor_sets[frame])
+	core.vk_command_vertex_buffers_bind(command_buffers[frame], {quad_vertex_buffer.handle})
+	core.vk_command_index_buffer_bind(command_buffers[frame], quad_index_buffer.handle)
+	core.vk_command_draw_indexed(command_buffers[frame], u32(len(quad_indices)))
+	core.vk_command_end_rendering(command_buffers[frame])
 	
 	core.vk_command_image_barrier(
 		command_buffer  = command_buffers[frame],
 		image           = core.vk_swapchain_get_image(index),
-		src_stage_mask  = {.COLOR_ATTACHMENT_OUTPUT},
-		dst_stage_mask  = {.BOTTOM_OF_PIPE},
 		src_access_mask = {.COLOR_ATTACHMENT_WRITE},
 		old_layout      = .COLOR_ATTACHMENT_OPTIMAL,
 		new_layout      = .PRESENT_SRC_KHR,			
 	)
+
 	core.vk_command_buffer_end(command_buffers[frame])
 
 	core.vk_queue_submit(
@@ -307,11 +481,12 @@ renderer_render_scene_swapchain :: proc(
 		{.COLOR_ATTACHMENT_OUTPUT},
 		block_until[frame]
 	)
+	
 	core.vk_present(render_finished[index], index)		
 }
 
 @(private="file")
-recreate_depth_image :: proc(
+recreate_pipeline_images :: proc(
 	extent: vk.Extent2D
 ) {
 	using renderer
@@ -322,11 +497,29 @@ recreate_depth_image :: proc(
 		depth_format,
 		.OPTIMAL,
 		{
-			width = extent.width,
+			width  = extent.width,
 			height = extent.height,
-			depth = 1
+			depth  = 1
 		},
 		{.DEPTH_STENCIL_ATTACHMENT},
 		&vk_allocator
 	)
+
+	if pixel_image.handle != 0 do core.vk_image_destroy(&pixel_image)
+
+	swapchain_format := core.vk_swapchain_get_image_format()
+	
+	pixel_image = core.vk_texture_image_create(
+		.OPTIMAL,
+		{
+			width = extent.width,
+			height = extent.height,
+			depth = 1
+		},
+		swapchain_format,
+		&vk_allocator
+	)
+
+	pixel_data.resolution = {f32(extent.width), f32(extent.height)}
+	core.vk_buffer_copy(transfer_pool, &pixel_ubo, &pixel_data, &vk_allocator)
 }

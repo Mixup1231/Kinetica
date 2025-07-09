@@ -16,3 +16,5 @@ glslang -V examples/obj/obj.frag -o shaders/obj.frag.spv
 glslang -V examples/obj/obj.vert -o shaders/obj.vert.spv
 glslang -V games/chain_reaction/engine/shaders/gourd.frag -o games/chain_reaction/engine/shaders/gourd.frag.spv
 glslang -V games/chain_reaction/engine/shaders/gourd.vert -o games/chain_reaction/engine/shaders/gourd.vert.spv
+glslang -V games/chain_reaction/engine/shaders/gourd_pixel.frag -o games/chain_reaction/engine/shaders/gourd_pixel.frag.spv
+glslang -V games/chain_reaction/engine/shaders/gourd_pixel.vert -o games/chain_reaction/engine/shaders/gourd_pixel.vert.spv
