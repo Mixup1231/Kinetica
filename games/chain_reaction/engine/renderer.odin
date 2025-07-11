@@ -339,7 +339,7 @@ renderer_render_scene_swapchain :: proc(
 			extent = extent
 		},
 		color_attachments = {
-			core.vk_color_attachment_create(pixel_image.view)
+			core.vk_color_attachment_create(pixel_image.view, clear_color = {0.0, 0.0, 0.0, 1})
 		},
 		depth_attachment = &depth_attachment
 	)

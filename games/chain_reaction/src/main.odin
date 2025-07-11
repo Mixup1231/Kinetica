@@ -11,25 +11,11 @@ import "../engine"
 import vk "vendor:vulkan"
 
 camera: core.Camera_3D
-
-car_update :: proc(dt: f32, car: ^engine.Entity) {
-	core.transform_rotate(&car.transform, {0, 1, 0}, dt)
-}
-
-car_two_update :: proc(dt: f32, car: ^engine.Entity) {
-	vecs := core.camera_3d_get_vectors(&camera)
-	vecs[.Front] = vecs[.Right].zyx
-	vecs[.Front].z *= -1
-	
-	transform := &car.transform
-	transform.position = la.lerp(transform.position, camera.position + vecs[.Front], dt)
-	core.transform_rotate(transform, {1, 0, 1}, dt)
-}
-
+fovy := la.to_radians(f32(80))
 update_camera_projection :: proc(
 	extent: vk.Extent2D
 ) {
-	core.camera_3d_set_projection(&camera, la.PI/4, f32(extent.width)/f32(extent.height), 0.1, 100)
+	core.camera_3d_set_projection(&camera, fovy, f32(extent.width)/f32(extent.height), 0.1, 100)
 }
 	
 main :: proc() {
@@ -49,11 +35,8 @@ main :: proc() {
 	engine.renderer_init()
 	defer engine.renderer_destroy()
 
-	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/car.obj", {})
-	defer engine.resource_manager_destroy_mesh(car_mesh)
-	
-	gun_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/gun.obj", {})
-	defer engine.resource_manager_destroy_mesh(gun_mesh)
+	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/GDC_Scene09-07-25.obj", {})
+	defer engine.resource_manager_destroy_mesh(car_mesh)	
 
 	scene := engine.scene_create()
 	defer engine.scene_destroy(&scene)
@@ -65,26 +48,15 @@ main :: proc() {
 	transform := core.transform_create()
 	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
 	engine.scene_register_mesh_component(&scene, one, car_mesh, transform)
-	engine.scene_register_script_component(&scene, one, {update = car_update})
-
-	two, _ := engine.scene_insert_entity(&scene)
-	core.transform_translate(&transform, {2, 0, 0})
-	core.transform_scale(&transform, {0.1, 0.1, 0.1})
-	engine.scene_register_mesh_component(&scene, two, gun_mesh, transform)
-	engine.scene_register_script_component(&scene, two, {update = car_two_update})
 
 	_, light := engine.scene_insert_point_light(&scene)
-	light.color = {1, 1, 1, 1}
-	light.position = {0, -3, 0, 1}
-	
-	_, light_two := engine.scene_insert_point_light(&scene)
-	light_two.color = {1, 0.2, 0.2, 1}
-	light_two.position = {0, 3, 0, 1}
+	light.color = {0.3, 0.3, 0.8, 1}
+	light.position = {0, -4, 0, 1}
 
-	camera = core.camera_3d_create(f32(800)/f32(600), speed = 2)
+	camera = core.camera_3d_create(f32(800)/f32(600), fovy = fovy, speed = 4)
 
 	fs: bool
-	dt, pixel_size, max_pixel_size: f32 = 0, 7, 8
+	dt, pixel_size, max_pixel_size: f32 = 0, 4, 8
 	start, end: time.Tick
 	for !core.window_should_close() {
 		core.window_poll()

@@ -28,6 +28,14 @@ layout(binding = 1) readonly buffer hot_ssbo{
 layout(binding = 2) uniform sampler2D s_albedo;
 layout(binding = 3) uniform sampler2D s_emissive;
 
+float calculate_attenuation(float distance) {
+    float constant  = 1.0;
+    float linear    = 0.09;
+    float quadratic = 0.032;
+
+    return 1.0 / (constant + linear * distance + quadratic * (distance * distance));
+}
+
 vec3 calculate_diffuse() {
     vec3 diffuse = vec3(0.0, 0.0, 0.0);
     
@@ -37,8 +45,8 @@ vec3 calculate_diffuse() {
         
         vec3 normal = normalize(i_normal);
         float diffuse_strength = max(dot(normal, light_direction), 0.0);
-        
         diffuse += diffuse_strength * light.color.rgb;
+        diffuse *= calculate_attenuation(length(light.position.xyz - i_fragment_position));
     }
 
     return diffuse;
@@ -56,7 +64,8 @@ vec3 calculate_specular() {
         vec3 reflect_direction = reflect(-light_direction, normal);
         
         float specular_strength = pow(max(dot(view_direction, reflect_direction), 0.0), 32);
-        specular += specular_strength * light.color.rgb;
+        specular += specular_strength * light.color.rgb;        
+        specular *= calculate_attenuation(length(light.position.xyz - i_fragment_position));
     }
 
     return specular;
@@ -68,7 +77,7 @@ void main() {
     vec3 specular = calculate_specular();
 
     float distance = length(i_fragment_position - camera_position.xyz);
-    float fog_factor = 1.0 - exp(-pow(distance * 0.2, 2.0));
+    float fog_factor = 1.0 - calculate_attenuation(distance);
     vec3 fog_color = vec3(0.0, 0.0, 0.0);
     
     vec3 result = (ambient + diffuse + specular) * vec3(1.0, 1.0, 1.0);
