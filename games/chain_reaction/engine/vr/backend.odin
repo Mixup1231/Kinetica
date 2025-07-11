@@ -23,6 +23,12 @@ VR_Context :: struct {
 	session_running:       bool,
 }
 
+Swapchain_Images_Info :: struct {
+	extent: vk.Extent2D,
+	format: i64,
+	count:  u32,
+}
+
 Swapchain_Info :: struct {
 	swapchain:        oxr.Swapchain,
 	swapchain_format: i64,
