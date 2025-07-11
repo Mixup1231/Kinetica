@@ -10,16 +10,16 @@ import oxr "../dependencies/openxr_odin/openxr"
 import "core:time"
 
 main :: proc() {
-	tracker: ^mem.Tracking_Allocator
-	tracker, context.allocator = core.init_tracker()
-	context.logger = core.init_logger("log.txt", .Jack, .All)
+	// tracker: ^mem.Tracking_Allocator
+	// tracker, context.allocator = core.init_tracker()
+	// context.logger = core.init_logger("log.txt", .Jack, .All)
 	core.window_create(800, 600, "VR Example")
-	vk_info := core.vk_info_get()
-	vr.init(vk_info)
-	defer {
-		vr.destroy()
-		defer core.destroy_tracker(tracker)
-	}
+	// vk_info := core.vk_info_get()
+	// vr.init(vk_info)
+	// defer {
+	// 	vr.destroy()
+	// 	defer core.destroy_tracker(tracker)
+	// }
 
 	engine.resource_manager_init()
 	engine.renderer_init()
@@ -44,25 +44,25 @@ main :: proc() {
 	light.color = {1, 1, 1, 1}
 	light.position = {0, -3, 0, 0}
 
-	is_valid: bool
-	images_info: vr.Swapchain_Images_Info
+	// is_valid: bool
+	// images_info: vr.Swapchain_Images_Info
 
-	for !is_valid {
-		vr.event_poll(vk_info)
-		images_info, is_valid = vr.get_swapchain_images_info()
-		time.sleep(1 * time.Millisecond)
-	}
+	// for !is_valid {
+	// 	vr.event_poll(vk_info)
+	// 	images_info, is_valid = vr.get_swapchain_images_info()
+	// 	time.sleep(1 * time.Millisecond)
+	// }
 	
-	engine.renderer_init_vr({
-		image_count = images_info.count,
-		extent = images_info.extent,
-		format = vk.Format(images_info.format),
-	})
+	// engine.renderer_init_vr({
+	// 	image_count = images_info.count,
+	// 	extent = images_info.extent,
+	// 	format = vk.Format(images_info.format),
+	// })
 
-	render_data: engine.VR_Render_Data
+	// render_data: engine.VR_Render_Data
 	for !core.window_should_close() {
-		should_render := vr.event_poll(vk_info)
-		if should_render {
+		// should_render := vr.event_poll(vk_info)
+		// if should_render {
 			// {
 			// 	// begin frame
 			// 	frame_state, render_info, views := vr.begin_frame()
@@ -90,9 +90,9 @@ main :: proc() {
 			// 	// end frame
 			// 	vr.end_frame(&frame_state, &render_info)
 			// }
-			
-			engine.renderer_render_scene_swapchain(&scene, &camera)
-		}
+		// }
+
+		engine.renderer_render_scene_swapchain(&scene, &camera)
 	}
 }
 
