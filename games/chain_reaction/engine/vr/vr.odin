@@ -386,11 +386,13 @@ get_vulkan_reqs :: proc(instance: oxr.Instance, id: oxr.SystemId) {
 	core.topic_info(.VR, "Extensions Required:", extensions)
 }
 
-get_swapchain_images_info :: proc() -> (images_info: Swapchain_Images_Info) {
+get_swapchain_images_info :: proc() -> (images_info: Swapchain_Images_Info, is_valid: bool) {
+	if len(vr_ctx.swapchain_infos) == 0 do return {}, false
+	
 	swapchain_info := &vr_ctx.swapchain_infos[0]
 	view_config := &vr_ctx.view_config[0]
 
-	return {
+	images_info = {
 		extent = {
 			width = view_config.recommendedImageRectWidth,
 			height = view_config.recommendedImageRectHeight,
@@ -398,5 +400,7 @@ get_swapchain_images_info :: proc() -> (images_info: Swapchain_Images_Info) {
 		format = swapchain_info.swapchain_format,
 		count = u32(len(swapchain_info.image_views))
 	}
+
+	return images_info, true
 }
 

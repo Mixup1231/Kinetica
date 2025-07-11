@@ -6,7 +6,8 @@ import "../engine"
 import "core:mem"
 import vk "vendor:vulkan"
 import la "core:math/linalg"
-import oxr "../dependencies/openxr_odin"
+import oxr "../dependencies/openxr_odin/openxr"
+import "core:time"
 
 main :: proc() {
 	tracker: ^mem.Tracking_Allocator
@@ -42,8 +43,16 @@ main :: proc() {
 	_, light := engine.scene_insert_point_light(&scene)
 	light.color = {1, 1, 1, 1}
 	light.position = {0, -3, 0, 0}
+
+	is_valid: bool
+	images_info: vr.Swapchain_Images_Info
+
+	for !is_valid {
+		vr.event_poll(vk_info)
+		images_info, is_valid = vr.get_swapchain_images_info()
+		time.sleep(1 * time.Millisecond)
+	}
 	
-	images_info := vr.get_swapchain_images_info()
 	engine.renderer_init_vr({
 		image_count = images_info.count,
 		extent = images_info.extent,
