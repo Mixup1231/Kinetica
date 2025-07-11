@@ -49,13 +49,13 @@ window_create :: proc(
 	app_info: VK_Application_Info = {
 		api_version = vk.API_VERSION_1_3,
 		extensions  = {
-			"VK_KHR_external_memory_capabilities",
-			"VK_KHR_external_fence_capabilities",
-			"VK_KHR_external_semaphore_capabilities",
-			"VK_KHR_get_physical_device_properties2",
+			// "VK_KHR_external_memory_capabilities",
+			// "VK_KHR_external_fence_capabilities",
+			// "VK_KHR_external_semaphore_capabilities",
+			// "VK_KHR_get_physical_device_properties2",
 		},
-		layers      = layers,
-		features    = nil,
+		layers   = layers,
+		features = nil,
 	}
 
 	dynamic_rendering_feature: vk.PhysicalDeviceDynamicRenderingFeaturesKHR = {
@@ -68,14 +68,14 @@ window_create :: proc(
 		present_modes = {.FIFO},
 		extensions    = {
 			vk.KHR_SWAPCHAIN_EXTENSION_NAME,
-			"VK_KHR_external_memory",
-			"VK_KHR_external_memory_win32",
-			"VK_KHR_external_fence",
-			"VK_KHR_external_fence_win32",
-			"VK_KHR_external_semaphore",
-			"VK_KHR_external_semaphore_win32",
-			"VK_KHR_get_memory_requirements2",
-			"VK_KHR_dedicated_allocation",
+			// "VK_KHR_external_memory",
+			// "VK_KHR_external_memory_win32",
+			// "VK_KHR_external_fence",
+			// "VK_KHR_external_fence_win32",
+			// "VK_KHR_external_semaphore",
+			// "VK_KHR_external_semaphore_win32",
+			// "VK_KHR_get_memory_requirements2",
+			// "VK_KHR_dedicated_allocation",
 		},
 	}
 
