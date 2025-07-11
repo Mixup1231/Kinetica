@@ -7,6 +7,7 @@ import la "core:math/linalg"
 
 import "../../../kinetica/core"
 import "../engine"
+import "../engine/vr"
 
 import vk "vendor:vulkan"
 
@@ -25,6 +26,19 @@ main :: proc() {
 	core.window_create(800, 600, "Oh my Gourd!")
 	defer core.window_destroy()
 
+	vk_info := core.vk_info_get()
+	vr.init(vk_info)
+	defer vr.destroy()
+
+	is_valid: bool
+	images_info: vr.Swapchain_Images_Info
+
+	for !is_valid {
+		vr.event_poll(vk_info)
+		images_info, is_valid = vr.get_swapchain_images_info()
+		time.sleep(1 * time.Millisecond)
+	}
+	
 	core.vk_swapchain_set_recreation_callback(update_camera_projection)
 	
 	core.input_set_mouse_mode(.Locked)
@@ -34,6 +48,12 @@ main :: proc() {
 
 	engine.renderer_init()
 	defer engine.renderer_destroy()
+	
+	engine.renderer_init_vr({
+		image_count = images_info.count,
+		extent = images_info.extent,
+		format = vk.Format(images_info.format),
+	})
 
 	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/GDC_Scene09-07-25.obj", {})
 	defer engine.resource_manager_destroy_mesh(car_mesh)	
@@ -107,7 +127,37 @@ main :: proc() {
 		
 		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())
 
-		engine.renderer_render_scene_swapchain(&scene, &camera)
+		// engine.renderer_render_scene_swapchain(&scene, &camera)
+
+		should_render := vr.event_poll(vk_info)
+		if should_render {
+			frame_state, render_info, views := vr.begin_frame()
+			defer delete(views)
+			
+			if !frame_state.shouldRender {
+				vr.end_frame(&frame_state, &render_info)
+				continue
+			} 
+
+			for &view, i in views {
+				image_view := vr.acquire_next_swapchain_view(&render_info, &view, u32(i))
+				
+				pose := render_info.layer_projection_views[i].pose
+				
+				render_data: engine.VR_Render_Data = {
+					image_index = u32(i),
+					image_view  = image_view,
+					camera = {
+						position = {pose.position.x, pose.position.y, pose.position.z},
+						projection = vr.get_view_projection(&render_info.layer_projection_views[i].fov, 0.05, 100, &pose)
+					}
+				}
+				engine.renderer_render_scene_vr(&scene, &render_data)
+				vr.release_swapchain_image_view(u32(i))
+			}
+
+			vr.end_frame(&frame_state, &render_info)
+		}
 
 		end = time.tick_now()
 	}

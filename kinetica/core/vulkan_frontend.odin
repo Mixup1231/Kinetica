@@ -74,6 +74,22 @@ VK_Image :: struct {
 	vk_allocator:      ^VK_Allocator,
 }
 
+Vulkan_Info :: struct {
+	instance:               vk.Instance,
+	logical_device:         vk.Device,
+	swapchain_image_format: vk.Format,
+}
+
+vk_info_get :: proc() -> (
+	info: Vulkan_Info
+) {
+	return {
+		vk_context.instance.handle,
+		vk_context.device.logical,
+		vk_context.swapchain.attributes.format.format
+	}
+}
+
 vk_allocate_default :: proc(
 	allocator:     ^VK_Allocator,
 	allocate_info: ^VK_Allocate_Info
