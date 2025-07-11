@@ -48,7 +48,12 @@ window_create :: proc(
 
 	app_info: VK_Application_Info = {
 		api_version = vk.API_VERSION_1_3,
-		extensions  = {},
+		extensions  = {
+			"VK_KHR_external_memory_capabilities",
+			"VK_KHR_external_fence_capabilities",
+			"VK_KHR_external_semaphore_capabilities",
+			"VK_KHR_get_physical_device_properties2",
+		},
 		layers      = layers,
 		features    = nil,
 	}
@@ -61,7 +66,17 @@ window_create :: proc(
 	device_attribtes: VK_Device_Attributes = {
 		features      = &dynamic_rendering_feature,
 		present_modes = {.FIFO},
-		extensions    = {vk.KHR_SWAPCHAIN_EXTENSION_NAME},
+		extensions    = {
+			vk.KHR_SWAPCHAIN_EXTENSION_NAME,
+			"VK_KHR_external_memory",
+			"VK_KHR_external_memory_win32",
+			"VK_KHR_external_fence",
+			"VK_KHR_external_fence_win32",
+			"VK_KHR_external_semaphore",
+			"VK_KHR_external_semaphore_win32",
+			"VK_KHR_get_memory_requirements2",
+			"VK_KHR_dedicated_allocation",
+		},
 	}
 
 	swapchain_attributes: VK_Swapchain_Attributes = {

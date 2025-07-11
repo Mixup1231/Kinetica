@@ -15,6 +15,7 @@ Logger_Topic :: enum {
 	Core,
 	Graphics,
 	Input,
+	VR,
 }
 
 @(private = "file")
