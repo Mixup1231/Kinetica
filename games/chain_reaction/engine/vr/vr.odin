@@ -113,7 +113,7 @@ render_frame :: proc() {
 		predicted_display_time = frame_state.predictedDisplayTime,
 		layer_projection = {sType = .COMPOSITION_LAYER_PROJECTION},
 	}
-	render_info.layers = make([]^oxr.CompositionLayerBaseHeader, 1)
+	// render_info.layers = make([]^oxr.CompositionLayerBaseHeader, 1)
 	
 	rendered: bool
 	if frame_state.shouldRender {
@@ -122,7 +122,6 @@ render_frame :: proc() {
 			render_info.layers[0] =
 			transmute(^oxr.CompositionLayerBaseHeader)&render_info.layer_projection
 		}
-
 	}
 
 	// End Frame
@@ -164,7 +163,7 @@ begin_frame :: proc(allocator := context.allocator) -> (frame_state: oxr.FrameSt
 		layer_projection = {sType = .COMPOSITION_LAYER_PROJECTION},
 	}
 	
-	render_info.layers = make([]^oxr.CompositionLayerBaseHeader, 1)
+	render_info.layers = make([dynamic]^oxr.CompositionLayerBaseHeader)
 	views := make([]oxr.View, len(vr_ctx.view_config))
 	for &v in views {
 		v.sType = .VIEW
@@ -193,7 +192,7 @@ begin_frame :: proc(allocator := context.allocator) -> (frame_state: oxr.FrameSt
 	return frame_state, render_info, views
 }
 
-end_frame :: proc(frame_state: ^oxr.FrameState, render_info: ^Render_Layer_Info) {
+end_frame :: proc(frame_state: ^oxr.FrameState, render_info: ^Render_Layer_Info, rendered: bool) {
 	assert(frame_state != nil)
 	assert(render_info != nil)
 	
@@ -204,6 +203,11 @@ end_frame :: proc(frame_state: ^oxr.FrameState, render_info: ^Render_Layer_Info)
 	render_info.layer_projection.space = vr_ctx.reference_space
 	render_info.layer_projection.viewCount = u32(len(render_info.layer_projection_views))
 	render_info.layer_projection.views = &render_info.layer_projection_views[0]
+
+	if rendered {
+		render_info.layer_projection.sType = .COMPOSITION_LAYER_PROJECTION
+		append(&render_info.layers, cast(^oxr.CompositionLayerBaseHeader)(&render_info.layer_projection))
+	}
 	
 	// End Frame
 	end_info := oxr.FrameEndInfo {
@@ -211,9 +215,8 @@ end_frame :: proc(frame_state: ^oxr.FrameState, render_info: ^Render_Layer_Info)
 		displayTime          = frame_state.predictedDisplayTime,
 		environmentBlendMode = vr_ctx.environment_blendmode,
 		layerCount           = u32(len(render_info.layers)),
-		layers               = raw_data(render_info.layers),
+		layers               = raw_data(render_info.layers[:]),
 	}
-	core.topic_info(.VR, end_info.layerCount, end_info.layers)
 	result := oxr.EndFrame(vr_ctx.session, &end_info)
 	oxr_assert(result, "Failed to end xr frame")
 }

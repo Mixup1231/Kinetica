@@ -46,7 +46,7 @@ App_Info :: struct {
 
 Render_Layer_Info :: struct {
 	predicted_display_time: oxr.Time,
-	layers:                 []^oxr.CompositionLayerBaseHeader,
+	layers:                 [dynamic]^oxr.CompositionLayerBaseHeader,
 	layer_projection:       oxr.CompositionLayerProjection,
 	layer_projection_views: [dynamic]oxr.CompositionLayerProjectionView,
 }

@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:time"
 import la "core:math/linalg"
+import oxr "../dependencies/openxr_odin/openxr"
 
 import "../../../kinetica/core"
 import "../engine"
@@ -135,7 +136,7 @@ main :: proc() {
 			defer delete(views)
 			
 			if !frame_state.shouldRender {
-				vr.end_frame(&frame_state, &render_info)
+				vr.end_frame(&frame_state, &render_info, false)
 				continue
 			} 
 
@@ -155,8 +156,9 @@ main :: proc() {
 				engine.renderer_render_scene_vr(&scene, &render_data)
 				vr.release_swapchain_image_view(u32(i))
 			}
-
-			vr.end_frame(&frame_state, &render_info)
+			
+			vr.end_frame(&frame_state, &render_info, true)
+			clear(&render_info.layers)
 		}
 
 		end = time.tick_now()
