@@ -18,6 +18,11 @@ Component_Type :: enum {
 	Mesh,
 	Transform,
 	Script,
+	Physics
+}
+
+Physics ::struct {
+	velocity:  [3]f32
 }
 
 Script :: struct {
@@ -25,11 +30,20 @@ Script :: struct {
 	fixed_update: proc(f32, ^Entity),
 }
 
+Entity_Tag :: enum {
+	None,
+	Pumpkin,
+}
+
 Entity :: struct {
 	mesh:            Mesh,
 	transform:       core.Transform,
 	script:          Script,
+	physics:         Physics,
 	component_types: Component_Types,
+	tag:             Entity_Tag,
+	id:              Entity_ID,
+	couple:          ^Entity, // Im using  this to couple the head and bot of pumpkin, bit of a bandaid
 }
 
 // NOTE(Mitchell): Remember to pad correctly
@@ -135,8 +149,26 @@ scene_insert_entity :: proc(
 
 	entity = sparse_array_insert(&scene.entities, entity_id)
 	if setup != nil do setup(entity)
+	entity.id = entity_id
 
 	return entity_id, entity
+}
+
+scene_destroy_entity ::proc(
+	scene: ^Scene,
+	entity_id: Entity_ID,
+	entity:  ^Entity,
+	cleanup: proc(^Entity) = nil,
+) {
+	assert(scene != nil)
+	assert(entity != nil)
+
+	sparse_array_remove(&scene.meshes[entity.mesh],entity_id)
+	sparse_array_remove(&scene.entities, entity_id)
+	append(&scene.free_entities, entity_id)
+	if cleanup != nil && entity != nil{
+		cleanup(entity)
+	}
 }
 
 scene_get_entity :: proc(
@@ -192,6 +224,19 @@ scene_register_script_component :: proc(
 	entity.component_types += {.Script}
 }
 
+scene_register_physics_component :: proc(
+	scene:     ^Scene,
+	entity_id: Entity_ID,
+	physics:   Physics,
+) {
+	assert(scene != nil)
+	assert(sparse_array_contains(&scene.entities, entity_id))
+
+	entity := sparse_array_get(&scene.entities, entity_id)
+	entity.physics= physics
+	entity.component_types += {.Physics}
+}
+
 scene_update_entities :: proc(
 	scene: ^Scene,
 	dt:    f32
@@ -214,6 +259,28 @@ scene_fixed_update_entities :: proc(
 	for &entity in sparse_array_slice(&scene.entities) {
 		if .Script in entity.component_types {
 			if entity.script.fixed_update != nil do entity.script.fixed_update(ts, &entity)
+		}
+	}
+}
+
+scene_update_physics_entities :: proc(
+	scene: ^Scene,
+	ts:     f32,
+) {
+	assert(scene != nil)
+
+	for &entity in sparse_array_slice(&scene.entities) {
+		if .Physics in entity.component_types {
+			entity.transform.position += entity.physics.velocity * ts
+
+			// Floor collider
+			if entity.transform.position.y > -1 {
+				entity.physics.velocity = {0, 0, 0}
+				continue
+			}
+
+			// Gravity
+			entity.physics.velocity.y += 1
 		}
 	}
 }

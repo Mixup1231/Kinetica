@@ -3,6 +3,7 @@ package engine
 import "base:intrinsics"
 
 import "core:mem"
+import "core:log"
 
 Sparse_Array :: struct(
 	$Key:      typeid,
@@ -69,7 +70,10 @@ sparse_array_remove :: proc(
 ) {
 	assert(sparse_array != nil)
 	assert(sparse_array.length > 0)
-	assert(key in sparse_array.key_to_index)
+	if key not_in sparse_array.key_to_index {
+		log.error(key, sparse_array.key_to_index)
+		assert(key in sparse_array.key_to_index)
+	}
 	context.allocator = sparse_array.allocator
 
 	last_element := &sparse_array.data[sparse_array.length-1]
