@@ -19,8 +19,9 @@ Vertex :: struct {
 }
 
 Texture :: struct {
-	image:   core.VK_Image,
-	sampler: vk.Sampler,
+	image:           core.VK_Image,
+	sampler:         vk.Sampler,
+	sample_location: u32
 }
 
 Mesh_Cold :: struct {
