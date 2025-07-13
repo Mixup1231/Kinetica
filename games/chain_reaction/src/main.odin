@@ -319,6 +319,7 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene, top: ^engine.Mesh, bot: ^
 			if pumpkin.tag == .Pumpkin && !pumpkin.has_exploded {
 				if dist_check(entity.transform.position, pumpkin.transform.position) {
 					explode_pumpkin(&pumpkin)
+					entity.has_collided = true
 					log.info("Chain")
 					return //per frame optimisation
 				}

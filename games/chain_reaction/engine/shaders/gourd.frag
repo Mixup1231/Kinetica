@@ -12,7 +12,7 @@ struct Point_Light {
     vec4 color;
 };
 
-layout(binding = 0) readonly buffer cold_ssbo{
+layout(binding = 0) readonly buffer cold_ssbo {
     mat4 view_projection;
     Point_Light point_lights[8];
     vec4 camera_position;
@@ -21,9 +21,9 @@ layout(binding = 0) readonly buffer cold_ssbo{
     uint point_light_count;
 };
 
-layout(binding = 1) readonly buffer hot_ssbo{
-    mat4 model_matrices[100];
-    uvec4 model_textures[100];
+layout(binding = 1) readonly buffer hot_ssbo {
+    mat4 model_matrices[1000];
+    uvec4 model_textures[1000];
 };
 
 layout(binding = 2) uniform sampler2D s_one;
@@ -37,8 +37,8 @@ layout(binding = 9) uniform sampler2D s_eight;
 layout(binding = 10) uniform sampler2D s_nine;
 
 float calculate_attenuation(float distance) {
-    float constant  = 1.0;
-    float linear    = 0.09;
+    float constant = 1.0;
+    float linear = 0.09;
     float quadratic = 0.032;
 
     return 1.0 / (constant + linear * distance + quadratic * (distance * distance));
@@ -46,11 +46,11 @@ float calculate_attenuation(float distance) {
 
 vec3 calculate_diffuse() {
     vec3 diffuse = vec3(0.0, 0.0, 0.0);
-    
+
     for (uint i = 0; i < point_light_count; i++) {
         Point_Light light = point_lights[i];
-        vec3 light_direction = normalize(light.position.xyz - i_fragment_position); 
-        
+        vec3 light_direction = normalize(light.position.xyz - i_fragment_position);
+
         vec3 normal = normalize(i_normal);
         float diffuse_strength = max(dot(normal, light_direction), 0.0);
         diffuse += diffuse_strength * light.color.rgb;
@@ -84,7 +84,7 @@ void main() {
     } else if (albedo_location == 8) {
         albedo = texture(s_nine, i_uv);
     }
-    
+
     vec4 emissive = vec4(0.0, 0.0, 0.0, 1.0);
     if (emissive_location == 0) {
         emissive = texture(s_one, i_uv);
@@ -105,14 +105,14 @@ void main() {
     } else if (emissive_location == 8) {
         emissive = texture(s_nine, i_uv);
     }
-    
+
     vec3 ambient = ambient_strength * ambient_color.xyz;
     vec3 diffuse = calculate_diffuse();
 
     float distance = length(i_fragment_position - camera_position.xyz);
     float fog_factor = 1.0 - calculate_attenuation(distance);
     vec3 fog_color = vec3(0.0, 0.0, 0.0);
-    
+
     vec4 result = vec4(ambient + diffuse, 1.0) * albedo + emissive;
     vec4 final_color = mix(result, vec4(fog_color, 1.0), fog_factor);
 

@@ -1,11 +1,11 @@
 package engine
 
 // resource manager
-Max_Meshes   :: 100
+Max_Meshes   :: 1000
 Max_Textures :: len(Texture_Type) * Max_Textures_Per_Type
 
 // scene
-Max_Entities :: 100 
+Max_Entities :: 1000
 
 // rendrer
 Frames_In_Flight :: 3
