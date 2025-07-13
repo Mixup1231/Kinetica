@@ -79,7 +79,6 @@ main :: proc() {
 	start, end: time.Tick
 	axis: [3]f32 = {1, 0, 0}
 	camera: la.Quaternionf32
-	start_app_time := time.now()
 	for !core.window_should_close() {
 		core.window_poll()
 		
@@ -101,10 +100,11 @@ main :: proc() {
 
 		dt = f32(time.duration_seconds(time.tick_diff(start, end)))
 		start = time.tick_now()
-		app_time = f32(time.duration_seconds(time.diff(start_app_time, time.now())))		
+		app_time += dt		
 		
 		engine.scene_update_entities(&scene, dt)
 		engine.scene_update_physics_entities(&scene, dt)
+		check_pumpkin_collisions(&scene)
 		
 		if core.input_is_key_pressed(.Key_X) {
 			axis = {1, 0, 0}
@@ -171,19 +171,26 @@ main :: proc() {
 			vr.end_frame(&frame_data)
 		}
 		end = time.tick_now()
+
+		
 		
 	}
 }
 
 import "core:math/rand"
 import "core:math"
-create_pumpkin :: proc(scene: ^engine.Scene, pumpkin_top_mesh: engine.Mesh, pumpkin_bot_mesh: engine.Mesh) {
-	range :f32 = 30
-	spawn := generate_spawn_pos(range)
+create_pumpkin :: proc(scene: ^engine.Scene, pumpkin_top_mesh: engine.Mesh, pumpkin_bot_mesh: engine.Mesh, spawn_pos := [3]f32{0, 0, 0}) {
+	range : f32 = 30
+	spawn: [3]f32
+	if spawn_pos == {0,0,0} {
+		spawn = generate_spawn_pos(range)
+	} else {
+		spawn = spawn_pos
+	}
 	top, e1 := engine.scene_insert_entity(scene)
 	e1.tag = .Pumpkin
 	transform := core.transform_create()
-	core.transform_translate(&transform, {spawn.x, 1.5  + (math.abs(spawn.x) - math.abs(spawn.z))/f32(range), spawn.z})
+	core.transform_translate(&transform, {spawn.x, 1.5  + 2*(math.abs(spawn.x) + math.abs(spawn.z))/f32(range), spawn.z})
 	core.transform_look_at(&transform, {0, 2, 0})
 	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
 	engine.scene_register_mesh_component(scene, top, pumpkin_top_mesh, transform)
@@ -192,7 +199,7 @@ create_pumpkin :: proc(scene: ^engine.Scene, pumpkin_top_mesh: engine.Mesh, pump
 	bot, e2 := engine.scene_insert_entity(scene)
 	e2.tag = .Pumpkin
 	transform = core.transform_create()
-	core.transform_translate(&transform, {spawn.x, 1.5 + (math.abs(spawn.x) - math.abs(spawn.z))/f32(range), spawn.z})
+	core.transform_translate(&transform, {spawn.x, 1.5 + (math.abs(spawn.x) + math.abs(spawn.z))/f32(range), spawn.z})
 	core.transform_look_at(&transform, {0, 2, 0})
 	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
 	engine.scene_register_mesh_component(scene, bot, pumpkin_bot_mesh, transform)
@@ -219,7 +226,7 @@ pumpkin_update :: proc(dt: f32, pumpkin: ^engine.Entity) {
 }
 
 @(private = "file")
-app_time : f32
+app_time : f32 = 1
 hot_reload_1 : f32 = 0
 hot_reload_2 : f32 = 0
 move_pumpkin_head :: proc(ts: f32, pumpkin : ^engine.Entity) {
@@ -258,10 +265,18 @@ destroy_pumpkin :: proc(scene: ^engine.Scene, camera: ^la.Quaternionf32) {
 	}
 	if closest_pumpkin != nil {
 		// engine.scene_destroy_entity(scene, closest_pumpkin_id, closest_pumpkin)
-		dir := generate_explosion_direction()
-		closest_pumpkin.physics.velocity = {dir.x, 25, dir.y}
-		closest_pumpkin.couple.physics.velocity = {dir.z, 25, dir.w}
+		explode_pumpkin(closest_pumpkin)
 	}
+}
+
+explode_pumpkin :: proc(pumpkin: ^engine.Entity,){
+	dir := generate_explosion_direction()
+	pumpkin.physics.velocity = {dir.x, 25, dir.y}
+	pumpkin.couple.physics.velocity = {dir.z, 25, dir.w}
+	pumpkin.has_exploded = true
+	pumpkin.couple.has_exploded = true
+	pumpkin.script.update = nil
+	pumpkin.couple.script.update = nil
 }
 
 generate_explosion_direction :: proc() -> (result: [4]f32) {
@@ -270,4 +285,31 @@ generate_explosion_direction :: proc() -> (result: [4]f32) {
 		v = amount * (rand.float32() - 0.5)
 	}
 	return result
+}
+check_pumpkin_collisions :: proc(scene: ^engine.Scene){
+	for &entity, i in engine.sparse_array_slice(&scene.entities) {
+		if !entity.has_exploded {
+			continue
+		}
+
+		if entity.transform.position.y < -1 {
+			engine.scene_destroy_entity(scene, entity.id, &entity)
+			if entity.has_collided {
+				
+			}
+		}
+		for &pumpkin, j in engine.sparse_array_slice(&scene.entities) {
+			if pumpkin.tag == .Pumpkin && !pumpkin.has_exploded {
+				if dist_check(entity.transform.position, pumpkin.transform.position) {
+					explode_pumpkin(&pumpkin)
+					log.info("Chain")
+					return //per frame optimisation
+				}
+			}	
+		}
+	}
+}
+
+dist_check :: proc(a:[3]f32, b: [3]f32) -> bool {
+	return  la.vector_length2(b-a) < 10
 }

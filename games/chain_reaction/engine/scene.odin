@@ -44,6 +44,8 @@ Entity :: struct {
 	tag:             Entity_Tag,
 	id:              Entity_ID,
 	couple:          ^Entity, // Im using  this to couple the head and bot of pumpkin, bit of a bandaid}
+	has_exploded:    bool,
+	has_collided:    bool,
 }
 // NOTE(Mitchell): Remember to pad correctly
 Point_Light :: struct #align(16) {
@@ -267,19 +269,18 @@ scene_update_physics_entities :: proc(
 ) {
 	assert(scene != nil)
 
-	for &entity in sparse_array_slice(&scene.entities) {
+	for &entity, i in sparse_array_slice(&scene.entities) {
 		if .Physics in entity.component_types {
 			entity.transform.position += entity.physics.velocity * ts
 			
 			// Gravity
-			entity.physics.velocity.y -= 1
-
-			// Floor collider
-			if entity.transform.position.y < 1.5 {
-				entity.physics.velocity = {0, 0, 0}
-				continue
+			if entity.has_exploded{
+				entity.physics.velocity.y -= 1
+				if entity.transform.position.y < 2.1 {
+					scene_destroy_entity(scene, scene.entities.index_to_key[uint(i)], &entity)
+					return
+				}
 			}
-
 		}
 	}
 }
