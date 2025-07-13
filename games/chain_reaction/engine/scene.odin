@@ -168,6 +168,7 @@ scene_insert_entity :: proc(
 	entity = sparse_array_insert(&scene.entities, entity_id)
 	if setup != nil do setup(entity)
 
+	entity.id = entity_id
 	return entity_id, entity
 }
 

@@ -309,7 +309,8 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene, top: ^engine.Mesh, bot: ^
 				entity.has_collided = true
 			}
 		}
-		if entity.transform.position.y < -100 {	
+		if entity.transform.position.y < -100 {
+			log.info("Ready to crash", entity.id, scene.entities.key_to_index)
 			engine.scene_destroy_entity(scene, entity.id, &entity)
 			log.info("Destroyed")
 			return
