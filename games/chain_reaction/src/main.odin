@@ -259,8 +259,8 @@ destroy_pumpkin :: proc(scene: ^engine.Scene, camera: ^la.Quaternionf32) {
 	if closest_pumpkin != nil {
 		// engine.scene_destroy_entity(scene, closest_pumpkin_id, closest_pumpkin)
 		dir := generate_explosion_direction()
-		closest_pumpkin.physics.velocity = {dir.x, -25, dir.y}
-		closest_pumpkin.couple.physics.velocity = {dir.z, -25, dir.w}
+		closest_pumpkin.physics.velocity = {dir.x, 25, dir.y}
+		closest_pumpkin.couple.physics.velocity = {dir.z, 25, dir.w}
 	}
 }
 

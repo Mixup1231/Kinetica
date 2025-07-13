@@ -270,15 +270,16 @@ scene_update_physics_entities :: proc(
 	for &entity in sparse_array_slice(&scene.entities) {
 		if .Physics in entity.component_types {
 			entity.transform.position += entity.physics.velocity * ts
+			
+			// Gravity
+			entity.physics.velocity.y -= 1
 
 			// Floor collider
-			if entity.transform.position.y > -1 {
+			if entity.transform.position.y < 1.5 {
 				entity.physics.velocity = {0, 0, 0}
 				continue
 			}
 
-			// Gravity
-			entity.physics.velocity.y += 1
 		}
 	}
 }
