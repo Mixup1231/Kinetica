@@ -145,6 +145,7 @@ resource_manager_load_mesh :: proc(
 		}
 		defer delete(texture_file)
 		
+		image.set_flip_vertically_on_load(1)
 		width, height, channels: i32
 		parsed_data := image.load_from_memory(raw_data(texture_file), i32(len(texture_file)), &width, &height, &channels, 4)
 		if channels != 4 {

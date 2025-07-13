@@ -31,9 +31,7 @@ main :: proc() {
 		vr.event_poll(vk_info)
 		images_info, is_valid = vr.get_swapchain_images_info()
 		time.sleep(1 * time.Millisecond)
-	}	
-	
-	core.input_set_mouse_mode(.Locked)
+	}		
 
 	engine.resource_manager_init()
 	defer engine.resource_manager_destory()
@@ -47,28 +45,121 @@ main :: proc() {
 		format = vk.Format(images_info.format),
 	})
 
-	car_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/GDC_Scene09-07-25.obj", {})
-	defer engine.resource_manager_destroy_mesh(car_mesh)	
-
 	scene := engine.scene_create()
 	defer engine.scene_destroy(&scene)
 
 	scene.ambient_strength = 0
 	scene.ambient_color = {1, 1, 1}	
 	
-	one, one_struct := engine.scene_insert_entity(&scene)
-	transform := core.transform_create()
-	// core.transform_rotate(&transform, {0, 1, 0}, -la.PI / 4)
-	engine.scene_register_mesh_component(&scene, one, car_mesh, transform)
-
 	_, light := engine.scene_insert_point_light(&scene)
-	light.color = {0.3, 0.3, 0.8, 1}
+	light.color = {1, 1, 1, 1}
 	light.position = {0, 4, 0, 1}
 	
+	_, light_two := engine.scene_insert_point_light(&scene)
+	light_two.color = {1, 0.3, .3, 1}
+	light_two.position = {0, 4, -5, 1}
+
+	// skybox
+	skybox_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/GDC_Skybox11-07-25.obj",
+		{
+			.Albedo = "",
+			.Emissive = "games/chain_reaction/assets/models/T_Skybox.PNG"
+		}
+	)
+
+	skybox, _ := engine.scene_insert_entity(&scene)
+	transform := core.transform_create()
+	engine.scene_register_mesh_component(&scene, skybox, skybox_mesh, transform)
+	
+	// dirt
+	dirt_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/Scenemodels-T_Dirt2.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Dirt2.PNG",
+			.Emissive = ""
+		}
+	)
+	dirt, _ := engine.scene_insert_entity(&scene)
+	engine.scene_register_mesh_component(&scene, dirt, dirt_mesh, transform)
+	
+	// stone
+	stone_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/Scenemodels-T_Stone1.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Stone1.PNG",
+			.Emissive = ""
+		}
+	)
+
+	stone, _ := engine.scene_insert_entity(&scene)
+	engine.scene_register_mesh_component(&scene, stone, stone_mesh, transform)
+	
+	// iron
+	iron_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/Scenemodels-T_Iron1.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Iron1.PNG",
+			.Emissive = ""
+		}
+	)
+
+	iron, _ := engine.scene_insert_entity(&scene)
+	engine.scene_register_mesh_component(&scene, iron, iron_mesh, transform)
+	
+	// gravestone
+	gravestone_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/Scenemodels-T_Gravestone1.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Gravestone1.PNG",
+			.Emissive = ""
+		}
+	)
+
+	gravestone, _ := engine.scene_insert_entity(&scene)
+	engine.scene_register_mesh_component(&scene, gravestone, gravestone_mesh, transform)
+	
+	// candle
+	candle_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/Scenemodels-T_Candle1.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Candle1.PNG",
+			.Emissive = ""
+		}
+	)
+
+	candle, _ := engine.scene_insert_entity(&scene)
+	engine.scene_register_mesh_component(&scene, candle, candle_mesh, transform)
+	
+	// candle light
+	candle_light_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/Scenemodels-T_CandleLight.obj",
+		{
+			.Albedo = "",
+			.Emissive = "games/chain_reaction/assets/models/T_CandleLight.PNG",
+		}
+	)
+
+	candle_light, _ := engine.scene_insert_entity(&scene)
+	engine.scene_register_mesh_component(&scene, candle_light, candle_light_mesh, transform)
+	
 	// create pumpkin
-	pumpkin_top_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/pumpkin-top.obj", {})
+	pumpkin_top_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/pumpkin-top.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Pumpkin1.PNG",
+			.Emissive = ""
+		}
+	)
 	defer engine.resource_manager_destroy_mesh(pumpkin_top_mesh)	
-	pumpkin_bot_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/pumpkin-bot.obj", {})
+	
+	pumpkin_bot_mesh := engine.resource_manager_load_mesh(
+		"games/chain_reaction/assets/models/pumpkin-bot.obj",
+		{
+			.Albedo = "games/chain_reaction/assets/models/T_Pumpkin1.PNG",
+			.Emissive = ""
+		}
+	)	
 	defer engine.resource_manager_destroy_mesh(pumpkin_bot_mesh)	
 
 	init_input()
@@ -84,26 +175,12 @@ main :: proc() {
 		
 		if core.input_is_key_pressed(.Key_Escape) do core.window_set_should_close(true)
 
-		if core.input_is_key_pressed(.Key_I) {
-			fs = !fs
-			if fs {
-				core.window_go_fullscreen()
-			} else {
-				core.window_go_windowed(800, 600)
-			}
-		}
-
-		if core.input_is_key_pressed(.Key_N) {
-			pixel_size = f32(int(pixel_size + 1) % int(max_pixel_size))
-			engine.renderer_set_pixelation(pixel_size + 1)
-		}
-
 		dt = f32(time.duration_seconds(time.tick_diff(start, end)))
 		start = time.tick_now()
 		app_time += dt
 
 		if !created && app_time > 2 {
-			for i in 0..<20 {
+			for i in 0..<40 {
 				create_pumpkin(&scene, pumpkin_top_mesh, pumpkin_bot_mesh)
 			}
 			created = true
@@ -112,44 +189,9 @@ main :: proc() {
 		engine.scene_update_entities(&scene, dt)
 		engine.scene_update_physics_entities(&scene, dt)
 
-
 		if get_input() {
 			log.info("Pressed")
 			destroy_pumpkin(&scene, &camera)
-		}
-		if core.input_is_key_pressed(.Key_X) {
-			axis = {1, 0, 0}
-		}
-		if core.input_is_key_pressed(.Key_Y) {
-			axis = {0, 1, 0}
-		}
-		if core.input_is_key_pressed(.Key_Z) {
-			axis = {0, 0, 1}
-		}
-		if core.input_is_key_held(.Key_K) {
-			core.transform_rotate(&one_struct.transform, axis, la.to_radians(f32(1)))
-		}
-		if core.input_is_key_held(.Key_J) {
-			core.transform_rotate(&one_struct.transform, axis, la.to_radians(f32(-1)))
-		}
-		if core.input_is_key_pressed(.Key_P) {
-		}
-		if core.input_is_key_pressed(.Key_O) {
-			for i in 0..<20 {
-				create_pumpkin(&scene, pumpkin_top_mesh, pumpkin_bot_mesh)
-			}
-		}
-		if core.input_is_key_pressed(.Key_H) {
-			hot_reload_1 += 0.1
-			if hot_reload_1 > 1 {
-				hot_reload_1 = 0
-			}
-		}
-		if core.input_is_key_pressed(.Key_G) {
-			hot_reload_2 += 0.1
-			if hot_reload_2 > 1 {
-				hot_reload_2 = 0
-			}
 		}
 
 		should_render := vr.event_poll(vk_info)
@@ -305,12 +347,11 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene, top: ^engine.Mesh, bot: ^
 
 		if entity.transform.position.y < -1 {
 			if !entity.has_collided {
-				create_pumpkin(scene, top^, bot^, {entity.transform.position.x, 5, entity.transform.position.z})
+				if rand.float32() > 0.5 do create_pumpkin(scene, top^, bot^, {entity.transform.position.x, 5, entity.transform.position.z})
 				entity.has_collided = true
 			}
 		}
-		if entity.transform.position.y < -100 {
-			log.info("Ready to crash", entity.id, scene.entities.key_to_index)
+		if entity.transform.position.y < -2 {
 			engine.scene_destroy_entity(scene, entity.id, &entity)
 			log.info("Destroyed")
 			return
