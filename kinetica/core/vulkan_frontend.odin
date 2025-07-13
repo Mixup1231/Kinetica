@@ -1456,6 +1456,16 @@ vk_fence_destroy_slice :: proc(
 	delete(fences)
 }
 
+vk_fence_reset :: proc(
+	fence: vk.Fence
+) {
+	assert(vk_context.initialised)
+	assert(vk_context.device.initialised)
+
+	fence := fence
+	vk_warn(vk.ResetFences(vk_context.device.logical, 1, &fence))
+}
+
 vk_swapchain_get_next_image_index :: proc(
 	signal_image_available: vk.Semaphore,
 	block_until:            vk.Fence,

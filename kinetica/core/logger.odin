@@ -65,82 +65,82 @@ init_logger :: proc(
 }
 
 @(disabled = RELEASE)
-user_debug :: proc(user: Logger_User, args: ..any) {
+user_debug :: proc(user: Logger_User, args: ..any, location := #caller_location) {
 	if logger_ctx.user != .All && user != logger_ctx.user && user != .All {
 		return
 	}
-	log.debug(user, ":", args)
+	log.debug(user, ":", location,  args)
 }
 
 @(disabled = RELEASE)
-user_info :: proc(user: Logger_User, args: ..any) {
+user_info :: proc(user: Logger_User, args: ..any, location := #caller_location) {
 	if logger_ctx.user != .All && user != logger_ctx.user && user != .All {
 		return
 	}
-	log.info(user, ":", args)
+	log.info(user, ":", location,  args)
 }
 
 @(disabled = RELEASE)
-user_warn :: proc(user: Logger_User, args: ..any) {
+user_warn :: proc(user: Logger_User, args: ..any, location := #caller_location) {
 	if logger_ctx.user != .All && user != logger_ctx.user && user != .All {
 		return
 	}
-	log.warn(user, ":", args)
+	log.warn(user, ":", location,  args)
 }
 
 @(disabled = RELEASE)
-user_error :: proc(user: Logger_User, args: ..any) {
+user_error :: proc(user: Logger_User, args: ..any, location := #caller_location) {
 	if logger_ctx.user != .All && user != logger_ctx.user && user != .All {
 		return
 	}
-	log.error(user, ":", args)
+	log.error(user, ":", location,  args)
 }
 
 @(disabled = RELEASE)
-user_fatal :: proc(user: Logger_User, args: ..any) {
+user_fatal :: proc(user: Logger_User, args: ..any, location := #caller_location) {
 	if logger_ctx.user != .All && user != logger_ctx.user && user != .All {
 		return
 	}
-	log.fatal(user, ":", args)
+	log.fatal(user, ":",  location, args)
 }
 
 @(disabled = RELEASE)
-topic_debug :: proc(topic: Logger_Topic, args: ..any) {
+topic_debug :: proc(topic: Logger_Topic, args: ..any, location := #caller_location) {
 	if logger_ctx.topic != .All && topic != logger_ctx.topic && topic != .All {
 		return
 	}
-	log.debug(topic, ":", args)
+	log.debug(topic, ":",  location, args)
 }
 
 @(disabled = RELEASE)
-topic_info :: proc(topic: Logger_Topic, args: ..any) {
+topic_info :: proc(topic: Logger_Topic, args: ..any, location := #caller_location) {
 	if logger_ctx.topic != .All && topic != logger_ctx.topic && topic != .All {
 		return
 	}
-	log.info(topic, ":", args)
+	log.info(topic, ":",  location, args)
 }
 
 @(disabled = RELEASE)
-topic_warn :: proc(topic: Logger_Topic, args: ..any) {
+topic_warn :: proc(topic: Logger_Topic, args: ..any, location := #caller_location) {
 	if logger_ctx.topic != .All && topic != logger_ctx.topic && topic != .All {
 		return
 	}
-	log.warn(topic, ":", args)
+	log.warn(topic, ":",  location, args)
 }
 
 @(disabled = RELEASE)
-topic_error :: proc(topic: Logger_Topic, args: ..any) {
+topic_error :: proc(topic: Logger_Topic, args: ..any, location := #caller_location) {
 	if logger_ctx.topic != .All && topic != logger_ctx.topic && topic != .All {
 		return
 	}
-	log.error(topic, ":", args)
+	log.error(topic, ":", location, args)
 }
 
 @(disabled = RELEASE)
-topic_fatal :: proc(topic: Logger_Topic, args: ..any) {
+topic_fatal :: proc(topic: Logger_Topic, args: ..any, location := #caller_location) {
 	if logger_ctx.topic != .All && topic != logger_ctx.topic && topic != .All {
 		return
 	}
-	log.fatal(topic, ":", args)
+	log.fatal(topic, ":", location, args)
 }
 

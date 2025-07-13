@@ -180,8 +180,7 @@ get_view_projection :: proc(fov: ^oxr.Fovf, nearz, farz: f32, pose: ^oxr.Posef) 
 		kmag = pose.orientation.z
 	)
 
-	view := la.inverse(la.matrix4_from_quaternion_f32(orientation) * la.matrix4_translate_f32(position))
-	// view := la.inverse(la.matrix4_translate_f32(position) * la.matrix4_from_quaternion_f32(orientation))
+	view := la.inverse(la.matrix4_translate_f32(position) * la.matrix4_from_quaternion_f32(orientation))
 	
 	return view_projection * view
 }

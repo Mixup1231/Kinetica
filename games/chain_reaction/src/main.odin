@@ -1,5 +1,6 @@
 package main
 
+import "core:os"
 import "core:fmt"
 import "core:log"
 import "core:time"
@@ -11,14 +12,6 @@ import "../engine"
 import "../engine/vr"
 
 import vk "vendor:vulkan"
-
-camera: core.Camera_3D
-fovy := la.to_radians(f32(80))
-update_camera_projection :: proc(
-	extent: vk.Extent2D
-) {
-	core.camera_3d_set_projection(&camera, fovy, f32(extent.width)/f32(extent.height), 0.1, 100)
-}
 	
 main :: proc() {
 	context.logger = log.create_console_logger()
@@ -38,9 +31,7 @@ main :: proc() {
 		vr.event_poll(vk_info)
 		images_info, is_valid = vr.get_swapchain_images_info()
 		time.sleep(1 * time.Millisecond)
-	}
-	
-	core.vk_swapchain_set_recreation_callback(update_camera_projection)
+	}	
 	
 	core.input_set_mouse_mode(.Locked)
 
@@ -65,20 +56,19 @@ main :: proc() {
 	scene.ambient_strength = 0
 	scene.ambient_color = {1, 1, 1}	
 	
-	one, _ := engine.scene_insert_entity(&scene)
+	one, one_struct := engine.scene_insert_entity(&scene)
 	transform := core.transform_create()
-	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
+	core.transform_rotate(&transform, {0, 1, 0}, -la.PI / 4)
 	engine.scene_register_mesh_component(&scene, one, car_mesh, transform)
 
 	_, light := engine.scene_insert_point_light(&scene)
 	light.color = {0.3, 0.3, 0.8, 1}
-	light.position = {0, -4, 0, 1}
-
-	camera = core.camera_3d_create(f32(800)/f32(600), fovy = fovy, speed = 4)
+	light.position = {0, 4, 0, 1}
 
 	fs: bool
 	dt, pixel_size, max_pixel_size: f32 = 0, 4, 8
 	start, end: time.Tick
+	axis: [3]f32 = {1, 0, 0}
 	for !core.window_should_close() {
 		core.window_poll()
 		
@@ -103,64 +93,50 @@ main :: proc() {
 		
 		engine.scene_update_entities(&scene, dt)
 
-		vecs := core.camera_3d_get_vectors(&camera)
-		vecs[.Front] = vecs[.Right].zyx
-		vecs[.Front].z *= -1
-		
-		if core.input_is_key_held(.Key_W) {
-			camera.position += vecs[.Front] * dt * camera.speed
+		if core.input_is_key_pressed(.Key_X) {
+			axis = {1, 0, 0}
 		}
-		if core.input_is_key_held(.Key_S) {
-			camera.position -= vecs[.Front] * dt * camera.speed
+		if core.input_is_key_pressed(.Key_Y) {
+			axis = {0, 1, 0}
 		}
-		if core.input_is_key_held(.Key_D) {
-			camera.position += vecs[.Right] * dt * camera.speed
+		if core.input_is_key_pressed(.Key_Z) {
+			axis = {0, 0, 1}
 		}
-		if core.input_is_key_held(.Key_A) {
-			camera.position -= vecs[.Right] * dt * camera.speed
+		if core.input_is_key_held(.Key_K) {
+			core.transform_rotate(&one_struct.transform, axis, la.to_radians(f32(1)))
 		}
-		if core.input_is_key_held(.Key_Space) {
-			camera.position += {0, -1, 0} * dt * camera.speed
-		}
-		if core.input_is_key_held(.Key_Left_Shift) {
-			camera.position += {0, 1, 0} * dt * camera.speed
-		}
-		
-		core.camera_3d_update(&camera, core.input_get_relative_mouse_pos_f32())
-
-		// engine.renderer_render_scene_swapchain(&scene, &camera)
+		if core.input_is_key_held(.Key_J) {
+			core.transform_rotate(&one_struct.transform, axis, la.to_radians(f32(-1)))
+		}		
 
 		should_render := vr.event_poll(vk_info)
 		if should_render {
-			frame_state, render_info, views := vr.begin_frame()
-			defer delete(views)
-			
-			if !frame_state.shouldRender {
-				vr.end_frame(&frame_state, &render_info, false)
+			frame_data := vr.begin_frame()
+			if !frame_data.frame_state.shouldRender {
+				vr.end_frame(&frame_data)
 				continue
-			} 
-
-			for &view, i in views {
-				image_view := vr.acquire_next_swapchain_view(&render_info, &view, u32(i))
-				
-				pose := render_info.layer_projection_views[i].pose
+			}
+			
+			for i in 0..<frame_data.submit_count {
+				view  := &frame_data.views[i]
+				view.pose.position.y += 5
+				image := vr.acquire_next_swapchain_image(i)
 				
 				render_data: engine.VR_Render_Data = {
-					image_index = u32(i),
-					image_view  = image_view,
-					camera = {
-						position = {pose.position.x, pose.position.y, pose.position.z},
-						projection = vr.get_view_projection(&render_info.layer_projection_views[i].fov, 0.05, 100, &pose)
+					image_handle = image.handle,
+					image_view   = image.view,
+					image_index  = image.index,
+					camera       = {
+						position = {view.pose.position.x, view.pose.position.y, view.pose.position.z},
+						projection = vr.get_view_projection(&view.fov, 0.05, 100, &view.pose)
 					}
 				}
 				engine.renderer_render_scene_vr(&scene, &render_data)
-				vr.release_swapchain_image_view(u32(i))
+				vr.release_swapchain_image(i)
 			}
-			
-			vr.end_frame(&frame_state, &render_info, true)
-			clear(&render_info.layers)
+			vr.end_frame(&frame_data)
 		}
-
 		end = time.tick_now()
+		
 	}
 }
