@@ -13,7 +13,8 @@ import "vendor:stb/image"
 Resource_Manager :: struct {
 	graphics_pool: core.VK_Command_Pool,
 	transfer_pool: core.VK_Command_Pool,
-	textures:      [Texture_Type]Sparse_Array(Mesh, Texture, Max_Textures_Per_Type),
+	texture_cache: map[string]Texture,
+	textures:      [Texture_Type]Sparse_Array(Mesh, string, Max_Textures_Per_Type),
 	mesh_colds:    Sparse_Array(Mesh, Mesh_Cold, Max_Meshes),
 	mesh_hots:     Sparse_Array(Mesh, Mesh_Hot, Max_Meshes),
 	free_meshes:   [dynamic]Mesh,
@@ -38,9 +39,10 @@ resource_manager_init :: proc(
 
 	transfer_pool = core.vk_command_pool_create(.Transfer)
 	graphics_pool = core.vk_command_pool_create(.Graphics)
-	
+
+	texture_cache = make(map[string]Texture)
 	for &texture_array in textures {
-		texture_array = sparse_array_create(Mesh, Texture, Max_Textures_Per_Type)
+		texture_array = sparse_array_create(Mesh, string, Max_Textures_Per_Type)
 	}
 	
 	mesh_colds = sparse_array_create(Mesh, Mesh_Cold, Max_Meshes)
@@ -58,13 +60,9 @@ resource_manager_destory :: proc() {
 	using resource_manager
 	ensure(initialised)
 
-	for &texture_array in textures {
-		texture_slice := sparse_array_slice(&texture_array)
-		for &texture in texture_slice {
-			core.vk_image_destroy(&texture.image)
-			core.vk_sampler_destroy(texture.sampler)
-		}
-		sparse_array_destroy(&texture_array)
+	for _, &texture in texture_cache {
+		core.vk_image_destroy(&texture.image)
+		core.vk_sampler_destroy(texture.sampler)
 	}
 	
 	mesh_cold_slice := sparse_array_slice(&mesh_colds)
@@ -135,6 +133,10 @@ resource_manager_load_mesh :: proc(
 		if filepath == "" do continue
 
 		mesh_hot.texture_types += {texture_type}
+		path := sparse_array_insert(&textures[texture_type], mesh)
+		path^ = filepath
+		
+		if filepath in texture_cache do continue
 		
 		texture_file, success := os.read_entire_file_from_filename(filepath)
 		if !success {
@@ -155,10 +157,13 @@ resource_manager_load_mesh :: proc(
 		defer delete(data)
 		mem.copy(raw_data(data), parsed_data, len(data))
 
-		texture := sparse_array_insert(&textures[texture_type], mesh)
+		location := u32(len(texture_cache))
+		map_insert(&texture_cache, filepath, Texture{})
+		texture := &texture_cache[filepath]
 		texture.image = core.vk_texture_image_create(.OPTIMAL, vk.Extent3D{u32(width), u32(height), 1}, .R8G8B8A8_SRGB, &vk_allocator)
 		core.vk_image_copy_staged(transfer_pool, &texture.image, data, &vk_allocator)
 		texture.sampler = core.vk_sampler_create()
+		texture.sample_location = location
 	}
 
 	return mesh
@@ -182,20 +187,6 @@ resource_manager_destroy_mesh :: proc(
 	sparse_array_remove(&mesh_hots, mesh)
 
 	append(&free_meshes, mesh)
-	
-	albedo_array := &textures[.Albedo]
-	if sparse_array_contains(albedo_array, mesh) {
-		texture := sparse_array_get(albedo_array, mesh)
-		core.vk_image_destroy(&texture.image)
-		core.vk_sampler_destroy(texture.sampler)
-	}
-	
-	emissive_array := &textures[.Emissive]
-	if sparse_array_contains(emissive_array, mesh) {
-		texture := sparse_array_get(emissive_array, mesh)
-		core.vk_image_destroy(&texture.image)
-		core.vk_sampler_destroy(texture.sampler)
-	}
 }
 
 resource_manager_get_mesh_cold :: proc(
@@ -234,5 +225,5 @@ resource_manager_get_texture :: proc(
 	texture_array := &textures[texture_type]
 	assert(sparse_array_contains(texture_array, mesh))
 
-	return sparse_array_get(texture_array, mesh)
+	return &texture_cache[sparse_array_get(texture_array, mesh)^]
 }

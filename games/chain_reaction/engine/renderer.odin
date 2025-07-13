@@ -143,7 +143,7 @@ renderer_init :: proc() {
 	descriptor_types: [2+Num_Samplers]vk.DescriptorType
 	descriptor_types[0] = .STORAGE_BUFFER
 	descriptor_types[1] = .STORAGE_BUFFER
-	for &type in descriptor_types[1:] do type = .COMBINED_IMAGE_SAMPLER
+	for &type in descriptor_types[2:] do type = .COMBINED_IMAGE_SAMPLER
 
 	descriptor_counts: [len(descriptor_types)]u32
 	for &count in descriptor_counts do count = Frames_In_Flight
@@ -557,6 +557,7 @@ renderer_init_vr :: proc(
 	vr_initialised = true
 }
 
+set: [Vr_Eye_Count][Num_Samplers]bool
 renderer_render_scene_vr:: proc(
 	scene:       ^Scene,
 	render_data: ^VR_Render_Data
@@ -633,36 +634,35 @@ renderer_render_scene_vr:: proc(
 	core.vk_buffer_copy(&vr_cold_ssbo[vr_frame], &cold_data)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[vr_frame], 0, &vr_cold_ssbo[vr_frame])
 
-	sample_count: u32 = 0
 	instance_index, mesh_index: u32
 	for mesh, &entity_array in scene.meshes {
 		instance_ranges[mesh_index][0] = instance_index
 		
+		albedo_location, emissive_location: u32 = Num_Samplers+1, Num_Samplers+1
 		mesh_hot := resource_manager_get_mesh_hot(mesh)
-
-		albedo_sample, emissive_sample: u32 = Num_Samplers+1, Num_Samplers+1
-		has_albedo, has_emissive: bool
 		if .Albedo in mesh_hot.texture_types {
 			texture := resource_manager_get_texture(mesh, .Albedo)
-			albedo_sample = sample_count
-			core.vk_descriptor_set_update_image(descriptor_sets[vr_frame], 11, &texture.image, texture.sampler)
-			sample_count += 1
-			has_albedo = true
+			albedo_location = texture.sample_location
+			if !set[vr_frame][texture.sample_location] {
+				core.vk_descriptor_set_update_image(descriptor_sets[vr_frame], texture.sample_location + 2, &texture.image, texture.sampler)
+				set[vr_frame][texture.sample_location] = true
+			}
 		}
 
 		if .Emissive in mesh_hot.texture_types {
 			texture := resource_manager_get_texture(mesh, .Emissive)
-			emissive_sample = sample_count
-			core.vk_descriptor_set_update_image(descriptor_sets[vr_frame], emissive_sample, &texture.image, texture.sampler)
-			sample_count += 1
-			has_emissive = true
+			emissive_location = texture.sample_location
+			if !set[vr_frame][texture.sample_location] {
+				core.vk_descriptor_set_update_image(descriptor_sets[vr_frame], texture.sample_location + 2, &texture.image, texture.sampler)
+				set[vr_frame][texture.sample_location] = true
+			}
 		}
 		
 		for entity_id in sparse_array_slice(&entity_array) {
 			entity := sparse_array_get(&scene.entities, entity_id)
 			hot_data.model_matrices[instance_index] = core.transform_get_matrix(&entity.transform)
-			hot_data.model_textures[instance_index][0] = albedo_sample
-			hot_data.model_textures[instance_index][1] = emissive_sample
+			hot_data.model_textures[instance_index][0] = albedo_location
+			hot_data.model_textures[instance_index][1] = emissive_location
 			instance_index += 1
 		}
 		
