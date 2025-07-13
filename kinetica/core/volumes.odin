@@ -160,3 +160,15 @@ transform_translate :: proc(
 
 	transform.position += translation
 }
+
+transform_look_at :: proc(
+	transform: ^Transform,
+	position: [3]f32,
+	up := [3]f32{0, -1, 0}
+) {
+	ensure(transform != nil)
+
+	rotation := la.quaternion_look_at_f32(transform.position, position, up)
+	transform.rotation = la.quaternion_mul_quaternion(transform.rotation, rotation)
+	transform_rotate(transform, {0, 1, 0}, la.PI/2)
+}
