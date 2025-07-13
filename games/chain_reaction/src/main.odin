@@ -73,6 +73,8 @@ main :: proc() {
 	for i in 0..<20 {
 		create_pumpkin(&scene, pumpkin_top_mesh, pumpkin_bot_mesh)
 	}
+
+	init_input()
 	
 	fs: bool
 	dt, pixel_size, max_pixel_size: f32 = 0, 4, 8
@@ -104,8 +106,13 @@ main :: proc() {
 		
 		engine.scene_update_entities(&scene, dt)
 		engine.scene_update_physics_entities(&scene, dt)
-		check_pumpkin_collisions(&scene)
-		
+		check_pumpkin_collisions(&scene, &pumpkin_top_mesh, &pumpkin_bot_mesh)
+
+
+		if get_input() {
+			log.info("Pressed")
+			destroy_pumpkin(&scene, &camera)
+		}
 		if core.input_is_key_pressed(.Key_X) {
 			axis = {1, 0, 0}
 		}
@@ -122,7 +129,6 @@ main :: proc() {
 			core.transform_rotate(&one_struct.transform, axis, la.to_radians(f32(-1)))
 		}
 		if core.input_is_key_pressed(.Key_P) {
-			destroy_pumpkin(&scene, &camera)
 		}
 		if core.input_is_key_pressed(.Key_O) {
 			for i in 0..<20 {
@@ -286,7 +292,7 @@ generate_explosion_direction :: proc() -> (result: [4]f32) {
 	}
 	return result
 }
-check_pumpkin_collisions :: proc(scene: ^engine.Scene){
+check_pumpkin_collisions :: proc(scene: ^engine.Scene, top: ^engine.Mesh, bot: ^engine.Mesh){
 	for &entity, i in engine.sparse_array_slice(&scene.entities) {
 		if !entity.has_exploded {
 			continue
@@ -295,7 +301,7 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene){
 		if entity.transform.position.y < -1 {
 			engine.scene_destroy_entity(scene, entity.id, &entity)
 			if entity.has_collided {
-				
+				create_pumpkin(scene, top^, bot^, entity.transform.position)
 			}
 		}
 		for &pumpkin, j in engine.sparse_array_slice(&scene.entities) {
@@ -313,3 +319,205 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene){
 dist_check :: proc(a:[3]f32, b: [3]f32) -> bool {
 	return  la.vector_length2(b-a) < 10
 }
+
+import xr "./../dependencies/openxr_odin/openxr"
+HAND_COUNT :: 2
+AppInputInfo :: struct {
+	instance: xr.Instance,
+	session:  xr.Session,
+	touch_controller_path: xr.Path,
+    hand_paths: [HAND_COUNT]xr.Path,
+    squeeze_value_paths: [HAND_COUNT]xr.Path,
+    trigger_value_paths: [HAND_COUNT]xr.Path,
+    pose_paths: [HAND_COUNT]xr.Path,
+    haptic_paths: [HAND_COUNT]xr.Path,
+    menu_click_paths: [HAND_COUNT]xr.Path,
+    action_set: xr.ActionSet,
+    grab_action: xr.Action,
+    trigger_action: xr.Action,
+    trigger_click_action: xr.Action,
+    pose_action: xr.Action,
+    vibrate_action: xr.Action,
+    menu_action: xr.Action,
+	hand_locations: [HAND_COUNT]xr.SpaceLocation,
+    trigger_states: [HAND_COUNT]xr.ActionStateFloat,
+    trigger_click_states: [HAND_COUNT]xr.ActionStateBoolean,
+	stage_space: xr.Space,
+    hand_spaces: [HAND_COUNT]xr.Space
+}
+
+a := AppInputInfo{}
+// Create the action set, actions, interaction profile, and attach the action set to the session
+init_input :: proc() {
+    result: xr.Result
+    a.instance = vr.vr_ctx.instance
+	a.session = vr.vr_ctx.session
+    // Create Action Set
+	action_set_desc := xr.ActionSetCreateInfo{
+                sType = .ACTION_SET_CREATE_INFO,
+                actionSetName = xr.make_string("gameplay", xr.MAX_ACTION_SET_NAME_SIZE),
+                localizedActionSetName = xr.make_string("Gameplay", xr.MAX_LOCALIZED_ACTION_SET_NAME_SIZE),
+    }
+	result = xr.CreateActionSet(a.instance, &action_set_desc, &a.action_set)
+    assert(result ==.SUCCESS)
+
+    // Create sub-action paths
+	xr.StringToPath(a.instance, "/user/hand/left", &a.hand_paths[0])
+	xr.StringToPath(a.instance, "/user/hand/right", &a.hand_paths[1])
+	xr.StringToPath(a.instance, "/user/hand/left/input/squeeze/value",  &a.squeeze_value_paths[0])
+	xr.StringToPath(a.instance, "/user/hand/right/input/squeeze/value", &a.squeeze_value_paths[1])
+	xr.StringToPath(a.instance, "/user/hand/left/input/trigger/value",  &a.trigger_value_paths[0])
+	xr.StringToPath(a.instance, "/user/hand/right/input/trigger/value", &a.trigger_value_paths[1])
+	xr.StringToPath(a.instance, "/user/hand/left/input/grip/pose", &a.pose_paths[0])
+	xr.StringToPath(a.instance, "/user/hand/right/input/grip/pose", &a.pose_paths[1])
+	xr.StringToPath(a.instance, "/user/hand/left/output/haptic", &a.haptic_paths[0])
+	xr.StringToPath(a.instance, "/user/hand/right/output/haptic", &a.haptic_paths[1])
+	xr.StringToPath(a.instance, "/user/hand/left/input/menu/click", &a.menu_click_paths[0])
+	xr.StringToPath(a.instance, "/user/hand/right/input/menu/click", &a.menu_click_paths[1])
+
+    // Create Actions
+    grab_desc := xr.ActionCreateInfo{
+            sType = .ACTION_CREATE_INFO,
+            actionType = .FLOAT_INPUT,
+            actionName = xr.make_string("grab_object", xr.MAX_ACTION_NAME_SIZE),
+            localizedActionName = xr.make_string("Grab Object", xr.MAX_LOCALIZED_ACTION_NAME_SIZE),
+            countSubactionPaths = 2,
+            subactionPaths = &a.hand_paths[0],
+    }
+	result = xr.CreateAction(a.action_set, &grab_desc, &a.grab_action)
+    assert(result==.SUCCESS)
+
+        trigger_desc := xr.ActionCreateInfo{
+                sType = .ACTION_CREATE_INFO,
+                actionType = .FLOAT_INPUT,
+                actionName = xr.make_string("trigger", xr.MAX_ACTION_NAME_SIZE),
+                localizedActionName = xr.make_string("Trigger", xr.MAX_LOCALIZED_ACTION_NAME_SIZE),
+                countSubactionPaths = 2,
+                subactionPaths = &a.hand_paths[0],
+        }
+	result = xr.CreateAction(a.action_set, &trigger_desc, &a.trigger_action)
+    assert(result==.SUCCESS)
+
+        click_desc := xr.ActionCreateInfo{
+                sType = .ACTION_CREATE_INFO,
+                actionType = .BOOLEAN_INPUT,
+                actionName = xr.make_string("trigger_click", xr.MAX_ACTION_NAME_SIZE),
+                localizedActionName = xr.make_string("Trigger Click", xr.MAX_LOCALIZED_ACTION_NAME_SIZE),
+                countSubactionPaths = 2,
+                subactionPaths = &a.hand_paths[0],
+        }
+	result = xr.CreateAction(a.action_set, &click_desc, &a.trigger_click_action)
+    assert(result==.SUCCESS)
+
+        pose_desc := xr.ActionCreateInfo{
+                sType = .ACTION_CREATE_INFO,
+                actionType = .POSE_INPUT,
+                actionName = xr.make_string("hand_pose", xr.MAX_ACTION_NAME_SIZE),
+                localizedActionName = xr.make_string("Hand Pose", xr.MAX_LOCALIZED_ACTION_NAME_SIZE),
+                countSubactionPaths = 2,
+                subactionPaths = &a.hand_paths[0],
+        }
+	result = xr.CreateAction(a.action_set, &pose_desc, &a.pose_action)
+    assert(result==.SUCCESS)
+
+        vibrate_desc := xr.ActionCreateInfo{
+                sType = .ACTION_CREATE_INFO,
+                actionType = .VIBRATION_OUTPUT,
+                actionName = xr.make_string("vibrate_hand", xr.MAX_ACTION_NAME_SIZE),
+                localizedActionName = xr.make_string("Vibrate Hand", xr.MAX_LOCALIZED_ACTION_NAME_SIZE),
+                countSubactionPaths = 2,
+                subactionPaths = &a.hand_paths[0],
+        }
+	result = xr.CreateAction(a.action_set, &vibrate_desc, &a.vibrate_action)
+    assert(result==.SUCCESS)
+
+        menu_desc := xr.ActionCreateInfo{
+                sType = .ACTION_CREATE_INFO,
+                actionType = .BOOLEAN_INPUT,
+                actionName = xr.make_string("quit_session", xr.MAX_ACTION_NAME_SIZE),
+                localizedActionName = xr.make_string("Menu Button", xr.MAX_LOCALIZED_ACTION_NAME_SIZE),
+                countSubactionPaths = 2,
+                subactionPaths = &a.hand_paths[0],
+        }
+	result = xr.CreateAction(a.action_set, &menu_desc, &a.menu_action)
+    assert(result==.SUCCESS)
+
+        // Oculus Touch Controller Interaction Profile
+        xr.StringToPath(a.instance, "/interaction_profiles/oculus/touch_controller", &a.touch_controller_path)
+        bindings := [?]xr.ActionSuggestedBinding{
+                {a.grab_action, a.squeeze_value_paths[0]},
+                {a.grab_action, a.squeeze_value_paths[1]},
+                {a.trigger_action, a.trigger_value_paths[0]},
+                {a.trigger_action, a.trigger_value_paths[1]},
+                {a.trigger_click_action, a.trigger_value_paths[0]},
+                {a.trigger_click_action, a.trigger_value_paths[1]},
+                {a.pose_action, a.pose_paths[0]},
+                {a.pose_action, a.pose_paths[1]},
+                {a.menu_action, a.menu_click_paths[0]},
+                {a.vibrate_action, a.haptic_paths[0]},
+                {a.vibrate_action, a.haptic_paths[1]},
+        }
+        suggested_bindings := xr.InteractionProfileSuggestedBinding{
+                sType = .INTERACTION_PROFILE_SUGGESTED_BINDING,
+                interactionProfile = a.touch_controller_path,
+                suggestedBindings = &bindings[0],
+                countSuggestedBindings = len(bindings),
+        }
+        result = xr.SuggestInteractionProfileBindings(a.instance, &suggested_bindings)
+    assert(result==.SUCCESS)
+
+        // Hand Spaces
+	action_space_desc := xr.ActionSpaceCreateInfo{
+                sType = .ACTION_SPACE_CREATE_INFO,
+                action = a.pose_action,
+                poseInActionSpace = {{0.0, 0.0, 0.0, 1.0}, {0.0, 0.0, 0.0}},
+                subactionPath = a.hand_paths[0],
+        }
+	result = xr.CreateActionSpace(a.session, &action_space_desc, &a.hand_spaces[0])
+    assert(result==.SUCCESS)
+	action_space_desc.subactionPath = a.hand_paths[1]
+	result = xr.CreateActionSpace(a.session, &action_space_desc, &a.hand_spaces[1])
+    assert(result==.SUCCESS)
+
+        // Attach Action Set
+	session_actions_desc := xr.SessionActionSetsAttachInfo{
+                sType = .SESSION_ACTION_SETS_ATTACH_INFO,
+                countActionSets = 1,
+                actionSets = &a.action_set,
+        }
+	result = xr.AttachSessionActionSets(a.session, &session_actions_desc)
+    assert(result==.SUCCESS)
+}
+
+get_input:: proc() -> bool {
+	if (!vr.vr_ctx.is_focused) {
+		return false
+	}
+	active_action_set := xr.ActiveActionSet{
+        actionSet = a.action_set,
+        subactionPath = xr.Path(0),
+	}
+    action_sync_info := xr.ActionsSyncInfo{
+            sType = .ACTIONS_SYNC_INFO,
+            next = nil,
+            countActiveActionSets = 1,
+            activeActionSets = &active_action_set,
+    }
+    result := xr.SyncActions(a.session, &action_sync_info)
+    assert(result == .SUCCESS)
+    
+ // Get Action States and Spaces (i.e. current state of the controller inputs)
+    for i in 0 ..< HAND_COUNT {
+            a.hand_locations[i].sType = .SPACE_LOCATION
+            a.trigger_states[i].sType = .ACTION_STATE_FLOAT
+            a.trigger_click_states[i].sType = .ACTION_STATE_BOOLEAN
+    }
+    action_get_info := xr.ActionStateGetInfo{    
+	    sType = .ACTION_STATE_GET_INFO,
+	    action = a.trigger_click_action,
+	    subactionPath = a.hand_paths[1],
+	}
+	result = xr.GetActionStateBoolean(vr.vr_ctx.session, &action_get_info, &a.trigger_click_states[1])
+	return bool(a.trigger_click_states[1].currentState && a.trigger_click_states[1].changedSinceLastSync)
+}
+

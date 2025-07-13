@@ -9,7 +9,6 @@ import vk "vendor:vulkan"
 import "core:log"
 
 
-@(private)
 vr_ctx := VR_Context {
 	app_info = App_Info {
 		api_version = oxr.MAKE_VERSION(1, 0, 25),
@@ -100,6 +99,9 @@ event_poll :: proc(vk_info: core.Vulkan_Info) -> (should_render: bool) {
 		}
 		vr_ctx.environment_blendmode = get_environment_mode(vr_ctx.instance, vr_ctx.system_id)
 		vr_ctx.reference_space = get_reference_space(vr_ctx.session)
+	}
+	if session_state_change.state == .FOCUSED {
+		vr_ctx.is_focused = true
 	}
 	return session_state_change.state == .FOCUSED || session_state_change.state == .VISIBLE
 }

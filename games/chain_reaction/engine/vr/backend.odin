@@ -25,6 +25,7 @@ VR_Context :: struct {
 	environment_blendmode: oxr.EnvironmentBlendMode,
 	reference_space:       oxr.Space,
 	session_running:       bool,
+	is_focused:            bool,
 }
 
 Swapchain_Images_Info :: struct {
