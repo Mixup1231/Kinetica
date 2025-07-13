@@ -1,6 +1,7 @@
 package engine
 
 import "core:log"
+import la "core:math/linalg"
 
 import "../../../kinetica/core"
 
@@ -39,9 +40,10 @@ VR_Camera :: struct {
 }
 
 VR_Render_Data :: struct {
-	image_view:  vk.ImageView,
-	image_index: u32,
-	camera:      VR_Camera,
+	image_handle: vk.Image,
+	image_view:   vk.ImageView,
+	image_index:  u32,
+	camera:       VR_Camera,
 }
 
 Renderer :: struct {
@@ -63,12 +65,18 @@ Renderer :: struct {
 	hot_data:          Shader_Hot_Data,
 	hot_ssbo:          core.VK_Buffer,
 	depth_format:      vk.Format,
-	vr_depth_image:    core.VK_Image,
+	vr_depth_image:    [2]core.VK_Image,
 	depth_image:       core.VK_Image,
 	instance_ranges:   [Max_Meshes][2]u32,
 	pipeline:          vk.Pipeline,
 	pipeline_layout:   vk.PipelineLayout,
 
+	vr_pixel_proj:           [Vr_Eye_Count]core.VK_Buffer,
+	vr_cold_ssbo:            [Vr_Eye_Count]core.VK_Buffer,
+	vr_hot_ssbo:             [Vr_Eye_Count]core.VK_Buffer,
+	vr_fence:                []vk.Fence,
+	vr_command_buffers:      []core.VK_Command_Buffer,
+	vr_frame:                u32,
 	vr_image_details:        VR_Image_Details,
 	vr_render_finished:      []vk.Semaphore,
 	quad_vertices:           [4]Vertex,
@@ -77,7 +85,7 @@ Renderer :: struct {
 	quad_index_buffer:       core.VK_Buffer,
 	pixel_sampler:           vk.Sampler,
 	pixel_image:             core.VK_Image,
-	vr_pixel_image:          core.VK_Image,
+	vr_pixel_image:          [2]core.VK_Image,
 	pixel_data:              Shader_Pixel_Data,
 	pixel_ubo:               core.VK_Buffer,
 	pixel_descriptor_pool:   vk.DescriptorPool,
@@ -113,6 +121,9 @@ renderer_init :: proc() {
 
 	cold_ssbo = core.vk_storage_buffer_create(size_of(Shader_Cold_Data), &vk_allocator)
 	hot_ssbo = core.vk_storage_buffer_create(size_of(Shader_Hot_Data), &vk_allocator)
+
+	for &ssbo in vr_cold_ssbo do ssbo = core.vk_storage_buffer_create(size_of(Shader_Cold_Data), &vk_allocator)
+	for &ssbo in vr_hot_ssbo do ssbo = core.vk_storage_buffer_create(size_of(Shader_Hot_Data), &vk_allocator)
 	
 	swapchain_format := core.vk_swapchain_get_image_format()
 	rendering_info   := core.vk_rendering_info_create({swapchain_format}, depth_format)
@@ -170,7 +181,7 @@ renderer_init :: proc() {
 
 	input_assembly_state := core.vk_input_assembly_state_create()
 	viewport_state       := core.vk_viewport_state_create()
-	rasterizer_state     := core.vk_rasterizer_state_create()
+	rasterizer_state     := core.vk_rasterizer_state_create(cull_mode = {})
 	multisample_state    := core.vk_multisample_state_create()
 	depth_stencil_state  := core.vk_depth_stencil_state_create()
 	dynamic_state        := core.vk_dynamic_state_create()
@@ -198,19 +209,19 @@ renderer_init :: proc() {
 
 	quad_vertices = {
 		{
-			position = {-1, -1, 0},
+			position = {-1, -1, -4},
 			uv       = {0, 0}
 		},
 		{
-			position = {1, -1, 0},
+			position = {1, -1, -4},
 			uv       = {1, 0}
 		},
 		{
-			position = {1, 1, 0},
+			position = {1, 1, -4},
 			uv       = {1, 1}
 		},
 		{
-			position = {-1, 1, 0},
+			position = {-1, 1, -4},
 			uv       = {0, 1}
 		}
 	}
@@ -249,6 +260,12 @@ renderer_init :: proc() {
 				descriptorType  = .COMBINED_IMAGE_SAMPLER,
 				descriptorCount = 1,
 				stageFlags      = {.FRAGMENT}
+			},
+			{
+				binding         = 2,
+				descriptorType  = .UNIFORM_BUFFER,
+				descriptorCount = 1,
+				stageFlags      = {.VERTEX}
 			}
 		}
 	)
@@ -256,6 +273,10 @@ renderer_init :: proc() {
 	for &layout in pixel_descriptor_layouts do layout = pixel_descriptor_layout
 	
 	pixel_descriptor_sets = core.vk_descriptor_set_create(pixel_descriptor_pool, pixel_descriptor_layouts[:])
+
+	for &proj in vr_pixel_proj {
+		proj = core.vk_uniform_buffer_create(size_of(matrix[4, 4]f32), &vk_allocator)
+	}
 	
 	pixel_pipeline, pixel_pipeline_layout = core.vk_graphics_pipeline_create(
 		&rendering_info,
@@ -516,30 +537,34 @@ renderer_init_vr :: proc(
 
 	vr_image_details = image_details
 
+	vr_command_buffers = core.vk_command_buffer_create(graphics_pool, .PRIMARY, Vr_Eye_Count)
+	vr_fence = core.vk_fence_create(true, Vr_Eye_Count)
 	vr_render_finished = core.vk_semaphore_create(image_details.image_count)
 
-	vr_depth_image = core.vk_depth_image_create(
-		image_details.format,
-		.OPTIMAL,
-		{
-			width  = image_details.extent.width,
-			height = image_details.extent.height,
-			depth  = 1
-		},
-		{.DEPTH_STENCIL_ATTACHMENT},
-		&vk_allocator
-	)
-	
-	vr_pixel_image = core.vk_texture_image_create(
-		.OPTIMAL,
-		{
-			width  = image_details.extent.width,
-			height = image_details.extent.height,
-			depth  = 1
-		},
-		image_details.format,
-		&vk_allocator
-	)
+	for i in 0..<Vr_Eye_Count {
+		vr_depth_image[i] = core.vk_depth_image_create(
+			image_details.format,
+			.OPTIMAL,
+			{
+				width  = image_details.extent.width,
+				height = image_details.extent.height,
+				depth  = 1
+			},
+			{.DEPTH_STENCIL_ATTACHMENT},
+			&vk_allocator
+		)
+		
+		vr_pixel_image[i] = core.vk_texture_image_create(
+			.OPTIMAL,
+			{
+				width  = image_details.extent.width,
+				height = image_details.extent.height,
+				depth  = 1
+			},
+			image_details.format,
+			&vk_allocator
+		)	
+	}
 
 	vr_initialised = true
 }
@@ -551,43 +576,38 @@ renderer_render_scene_vr:: proc(
 	using renderer
 	assert(scene != nil)
 
-	frame = (frame + 1) % Frames_In_Flight
+	vr_frame = (vr_frame + 1) % Vr_Eye_Count
+
+	core.vk_buffer_copy_mapped(&vr_pixel_proj[vr_frame], &render_data.camera.projection)
+	core.vk_descriptor_set_update_uniform_buffer(pixel_descriptor_sets[vr_frame], 2, &vr_pixel_proj[vr_frame])
 	
-	core.vk_command_buffer_reset(command_buffers[frame])
-	core.vk_command_buffer_begin(command_buffers[frame])
-	
+	core.vk_command_buffer_reset(vr_command_buffers[vr_frame])
+	core.vk_command_buffer_begin(vr_command_buffers[vr_frame])	
+
+	image: core.VK_Image = {
+		handle = render_data.image_handle
+	}
 	core.vk_command_image_barrier(
-		command_buffer  = command_buffers[frame],
-		image           = &vr_pixel_image,
+		command_buffer  = vr_command_buffers[vr_frame],
+		image           = &image,
 		dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
 		old_layout      = .UNDEFINED,
 		new_layout      = .COLOR_ATTACHMENT_OPTIMAL,
 	)
-
-	core.vk_command_image_barrier(
-		command_buffers[frame],
-		image             = &vr_depth_image,
-		dst_access_mask   = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
-		old_layout        = .UNDEFINED,
-		new_layout        = .DEPTH_ATTACHMENT_OPTIMAL,
-		subresource_range = {{.DEPTH}, 0, 1, 0, 1}
-	)
-	depth_attachment := core.vk_depth_attachment_create(vr_depth_image.view)
 	
 	core.vk_command_begin_rendering(
-		command_buffer = command_buffers[frame],
+		command_buffer = vr_command_buffers[vr_frame],
 		render_area = {
 			offset = {0, 0},
 			extent = vr_image_details.extent
 		},
 		color_attachments = {
-			core.vk_color_attachment_create(vr_pixel_image.view)
+			core.vk_color_attachment_create(render_data.image_view, clear_color = {1, 0, 1, 1})
 		},
-		depth_attachment = &depth_attachment
 	)
 	
 	core.vk_command_viewport_set(
-		command_buffers[frame],
+		vr_command_buffers[vr_frame],
 		{{
 			x        = 0,
 			y        = 0,
@@ -599,122 +619,33 @@ renderer_render_scene_vr:: proc(
 	)
 
 	core.vk_command_scissor_set(
-		command_buffers[frame],
+		vr_command_buffers[vr_frame],
 		{{
 			offset = {0, 0},
 			extent = vr_image_details.extent
 		}}
 	)
-	core.vk_command_graphics_pipeline_bind(command_buffers[frame], pipeline)
+	core.vk_command_graphics_pipeline_bind(vr_command_buffers[vr_frame], pixel_pipeline)
+	core.vk_command_descriptor_set_bind(vr_command_buffers[vr_frame], pixel_pipeline_layout, .GRAPHICS, pixel_descriptor_sets[vr_frame])
+	core.vk_command_vertex_buffers_bind(vr_command_buffers[vr_frame], {quad_vertex_buffer.handle})
+	core.vk_command_index_buffer_bind(vr_command_buffers[vr_frame], quad_index_buffer.handle)
+	core.vk_command_draw_indexed(vr_command_buffers[vr_frame], u32(len(quad_indices)))
+	core.vk_command_end_rendering(vr_command_buffers[vr_frame])
 	
-	cold_data.view_projection = render_data.camera.projection
-	cold_data.camera_position = render_data.camera.position.xyzz
-	cold_data.ambient_color = scene.ambient_color.xyzz
-	cold_data.ambient_strength = scene.ambient_strength
-	for i in 0..<scene.point_light_count do cold_data.point_lights[i] = scene.point_lights[i]
-	cold_data.point_light_count = scene.point_light_count
-	
-	core.vk_buffer_copy(transfer_pool, &cold_ssbo, &cold_data, &vk_allocator)
-	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 0, &cold_ssbo)
-
-	instance_index, mesh_index: u32
-	for mesh, &entity_array in scene.meshes {
-		instance_ranges[mesh_index][0] = instance_index
-		
-		for entity_id in sparse_array_slice(&entity_array) {
-			entity := sparse_array_get(&scene.entities, entity_id)
-			hot_data.model_matrices[instance_index] = core.transform_get_matrix(&entity.transform)
-			instance_index += 1
-		}
-		instance_ranges[mesh_index][1] = instance_index - instance_ranges[mesh_index][0]
-		mesh_index += 1
-	}
-	core.vk_buffer_copy(transfer_pool, &hot_ssbo, &hot_data, &vk_allocator)
-	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[frame], 1, &hot_ssbo)
-	
-	core.vk_command_descriptor_set_bind(command_buffers[frame], pipeline_layout, .GRAPHICS, descriptor_sets[frame])
-
-	mesh_index = 0
-	for mesh, _ in scene.meshes {
-		mesh_hot := resource_manager_get_mesh_hot(mesh)
-		core.vk_command_vertex_buffers_bind(command_buffers[frame], {mesh_hot.vertex_buffer.handle})
-		core.vk_command_index_buffer_bind(command_buffers[frame], mesh_hot.index_buffer.handle)
-		
-		core.vk_command_draw_indexed(
-			command_buffer = command_buffers[frame],
-			index_count    = mesh_hot.index_count,
-			instance_count = instance_ranges[mesh_index][1],
-			first_instance = instance_ranges[mesh_index][0]
-		)
-		mesh_index += 1
-	}
-
-	core.vk_command_end_rendering(command_buffers[frame])
-
 	core.vk_command_image_barrier(
-		command_buffer  = command_buffers[frame],
-		image           = &pixel_image,
+		command_buffer  = vr_command_buffers[vr_frame],
+		image           = &image,
 		src_access_mask = {.COLOR_ATTACHMENT_WRITE},
-		dst_access_mask = {.SHADER_READ},
 		old_layout      = .COLOR_ATTACHMENT_OPTIMAL,
-		new_layout      = .SHADER_READ_ONLY_OPTIMAL,
+		new_layout      = .PRESENT_SRC_KHR,
 	)
-
-	// core.vk_command_image_barrier(
-	// 	command_buffer  = command_buffers[frame],
-	// 	image           = core.vk_swapchain_get_image(index),
-	// 	dst_access_mask = {.COLOR_ATTACHMENT_WRITE},
-	// 	old_layout      = .PRESENT_SRC_KHR,
-	// 	new_layout      = .COLOR_ATTACHMENT_OPTIMAL,
-	// )
-	
-	core.vk_command_begin_rendering(
-		command_buffer = command_buffers[frame],
-		render_area = {
-			offset = {0, 0},
-			extent = vr_image_details.extent
-		},
-		color_attachments = {
-			core.vk_color_attachment_create(render_data.image_view)
-		}
-	)
-	
-	core.vk_command_viewport_set(
-		command_buffers[frame],
-		{{
-			x        = 0,
-			y        = 0,
-			width    = f32(vr_image_details.extent.width),
-			height   = f32(vr_image_details.extent.height),
-		}}
-	)
-
-	core.vk_command_scissor_set(
-		command_buffers[frame],
-		{{
-			offset = {0, 0},
-			extent = vr_image_details.extent
-		}}
-	)
-
-	core.vk_command_graphics_pipeline_bind(command_buffers[frame], pixel_pipeline)
-	core.vk_descriptor_set_update_uniform_buffer(pixel_descriptor_sets[frame], 0, &pixel_ubo)
-	core.vk_descriptor_set_update_image(pixel_descriptor_sets[frame], 1, &pixel_image, pixel_sampler)
-	core.vk_command_descriptor_set_bind(command_buffers[frame], pixel_pipeline_layout, .GRAPHICS, pixel_descriptor_sets[frame])
-	core.vk_command_vertex_buffers_bind(command_buffers[frame], {quad_vertex_buffer.handle})
-	core.vk_command_index_buffer_bind(command_buffers[frame], quad_index_buffer.handle)
-	core.vk_command_draw_indexed(command_buffers[frame], u32(len(quad_indices)))
-	core.vk_command_end_rendering(command_buffers[frame])	
-
-	core.vk_command_buffer_end(command_buffers[frame])
 
 	core.vk_queue_submit(
-		command_buffers[frame],
-		render_finished[render_data.image_index],
-		image_available[frame],
-		{.COLOR_ATTACHMENT_OUTPUT},
-		block_until[frame]
+		vr_command_buffers[vr_frame],
+		vr_render_finished[render_data.image_index],
+		block_until = vr_fence[vr_frame]
 	)
+	core.vk_fence_reset(vr_fence[vr_frame])
 }
 
 @(private="file")

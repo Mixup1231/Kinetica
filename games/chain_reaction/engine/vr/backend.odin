@@ -7,6 +7,8 @@ import "core:slice"
 import "core:strings"
 import vk "vendor:vulkan"
 
+Max_Views :: 2
+
 @(private)
 VR_Context :: struct {
 	odin_ctx:              runtime.Context,
@@ -15,6 +17,8 @@ VR_Context :: struct {
 	app_info:              App_Info,
 	debug_messenger:       oxr.DebugUtilsMessengerEXT,
 	session:               oxr.Session,
+	view_submit_count:     u32,
+	view_count:            u32,
 	view_config:           []oxr.ViewConfigurationView,
 	view_type:             oxr.ViewConfigurationType,
 	swapchain_infos:       []Swapchain_Info,
@@ -29,10 +33,27 @@ Swapchain_Images_Info :: struct {
 	count:  u32,
 }
 
+OXR_Image :: struct {
+	handle: vk.Image,
+	view:   vk.ImageView,
+	extent: vk.Extent2D,
+	index:  u32,
+}
+
+OXR_Frame_Data :: struct {
+	frame_state:  oxr.FrameState,
+	render_info:  Render_Layer_Info,
+	views:        [Max_Views]oxr.View,
+	view_count:   u32,
+	submit_count: u32,
+} 
+
 Swapchain_Info :: struct {
 	swapchain:        oxr.Swapchain,
+	width:            i32,
+	height:           i32,
 	swapchain_format: i64,
-	image_views:      []vk.ImageView,
+	images:           []OXR_Image,
 }
 
 App_Info :: struct {
@@ -46,15 +67,14 @@ App_Info :: struct {
 
 Render_Layer_Info :: struct {
 	predicted_display_time: oxr.Time,
-	layers:                 [dynamic]^oxr.CompositionLayerBaseHeader,
 	layer_projection:       oxr.CompositionLayerProjection,
-	layer_projection_views: [dynamic]oxr.CompositionLayerProjectionView,
+	layer_projection_views: [Max_Views]oxr.CompositionLayerProjectionView,
 }
 
 @(private)
-oxr_assert :: proc(result: oxr.Result, message: string) {
+oxr_assert :: proc(result: oxr.Result, message: string, location := #caller_location) {
 	if result != .SUCCESS {
-		core.topic_fatal(.VR, result, message)
+		core.topic_fatal(.VR, result, message, location)
 	}
 }
 
@@ -192,12 +212,11 @@ get_view_configuration :: proc(
 	view_configs: []oxr.ViewConfigurationView,
 	view_type: oxr.ViewConfigurationType,
 ) {
-	count: u32
-	result := oxr.EnumerateViewConfigurations(instance, id, 0, &count, nil)
+	result := oxr.EnumerateViewConfigurations(instance, id, 0, &vr_ctx.view_count, nil)
 	oxr_assert(result, "Failed to get view config types")
-	view_config_types := make([]oxr.ViewConfigurationType, count)
+	view_config_types := make([]oxr.ViewConfigurationType, vr_ctx.view_count)
 	defer delete(view_config_types)
-	result = oxr.EnumerateViewConfigurations(instance, id, count, &count, &view_config_types[0])
+	result = oxr.EnumerateViewConfigurations(instance, id, vr_ctx.view_count, &vr_ctx.view_count, &view_config_types[0])
 	oxr_assert(result, "Failed to get view configurations")
 
 	result = oxr.EnumerateViewConfigurationViews(
@@ -205,11 +224,11 @@ get_view_configuration :: proc(
 		id,
 		view_config_types[0],
 		0,
-		&count,
+		&vr_ctx.view_count,
 		nil,
 	)
-	oxr_assert(result, "Failed to get count of view configuration views")
-	view_configs = make([]oxr.ViewConfigurationView, count)
+	oxr_assert(result, "Failed to get vr_ctx.view_count of view configuration views")
+	view_configs = make([]oxr.ViewConfigurationView, vr_ctx.view_count)
 	for &v in view_configs {
 		v.sType = .VIEW_CONFIGURATION_VIEW
 	}
@@ -217,8 +236,8 @@ get_view_configuration :: proc(
 		instance,
 		id,
 		view_config_types[0],
-		count,
-		&count,
+		vr_ctx.view_count,
+		&vr_ctx.view_count,
 		&view_configs[0],
 	)
 	oxr_assert(result, "Failed to get view config views")
@@ -280,7 +299,7 @@ get_swapchain_images :: proc(swapchain: oxr.Swapchain) -> (images: []oxr.Swapcha
 		swapchain,
 		count,
 		&count,
-		transmute(^oxr.SwapchainImageBaseHeader)&images[0],
+		cast(^oxr.SwapchainImageBaseHeader)&images[0],
 	)
 	oxr_assert(result, "Failed to get swapchain images")
 	core.topic_info(.VR, images)
@@ -359,4 +378,3 @@ get_reference_space :: proc(session: oxr.Session) -> (space: oxr.Space) {
 	oxr_assert(result, "Failed to create reference space")
 	return space
 }
-

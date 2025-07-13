@@ -6,6 +6,8 @@ import "core:strings"
 import la "core:math/linalg"
 import vk "vendor:vulkan"
 
+import "core:log"
+
 
 @(private)
 vr_ctx := VR_Context {
@@ -81,281 +83,25 @@ event_poll :: proc(vk_info: core.Vulkan_Info) -> (should_render: bool) {
 		for &s, i in vr_ctx.swapchain_infos {
 			s.swapchain = swapchains[i]
 			s.swapchain_format = i64(vk_info.swapchain_image_format)
+			s.width = i32(vr_ctx.view_config[i].recommendedImageRectWidth)
+			s.height = i32(vr_ctx.view_config[i].recommendedImageRectHeight)
+			
 			swapchain_images := get_swapchain_images(s.swapchain)
-			s.image_views = get_swapchain_image_views(&swapchain_images, vk_info)
+			defer delete(swapchain_images)
+			if s.images == nil do s.images = make([]OXR_Image, len(swapchain_images))
+			for image, j in swapchain_images {
+				s.images[j].handle = image.image
+			}
+			swapchain_image_views := get_swapchain_image_views(&swapchain_images, vk_info)
+			defer delete(swapchain_image_views)
+			for view, j in swapchain_image_views {
+				s.images[j].view = view
+			}
 		}
 		vr_ctx.environment_blendmode = get_environment_mode(vr_ctx.instance, vr_ctx.system_id)
 		vr_ctx.reference_space = get_reference_space(vr_ctx.session)
 	}
 	return session_state_change.state == .FOCUSED || session_state_change.state == .VISIBLE
-}
-
-render_frame :: proc() {
-	// Wait for render_frame
-	frame_state := oxr.FrameState {
-		sType = .FRAME_STATE,
-	}
-	wait_info := oxr.FrameWaitInfo {
-		sType = .FRAME_WAIT_INFO,
-	}
-	result := oxr.WaitFrame(vr_ctx.session, &wait_info, &frame_state)
-	oxr_assert(result, "XR Frame state invalid")
-
-	// Begin Frame
-	begin_info := oxr.FrameBeginInfo {
-		sType = .FRAME_BEGIN_INFO,
-	}
-	result = oxr.BeginFrame(vr_ctx.session, &begin_info)
-	oxr_assert(result, "XR frame failed to begin")
-
-	// Render
-	render_info := Render_Layer_Info {
-		predicted_display_time = frame_state.predictedDisplayTime,
-		layer_projection = {sType = .COMPOSITION_LAYER_PROJECTION},
-	}
-	// render_info.layers = make([]^oxr.CompositionLayerBaseHeader, 1)
-	
-	rendered: bool
-	if frame_state.shouldRender {
-		rendered := render_layer(&render_info, vr_ctx.session)
-		if rendered {
-			render_info.layers[0] =
-			transmute(^oxr.CompositionLayerBaseHeader)&render_info.layer_projection
-		}
-	}
-
-	// End Frame
-	end_info := oxr.FrameEndInfo {
-		sType                = .FRAME_END_INFO,
-		displayTime          = frame_state.predictedDisplayTime,
-		environmentBlendMode = vr_ctx.environment_blendmode,
-		layerCount           = u32(len(render_info.layers)),
-		layers               = raw_data(render_info.layers),
-	}
-	result = oxr.EndFrame(vr_ctx.session, &end_info)
-	oxr_assert(result, "Failed to end xr frame")
-}
-
-// NOTE(Mitchell): May want to take in a buffer of image views and resize if needed instead of allocating each frame
-// return count, use index to grab image view from swapchain_info in context
-begin_frame :: proc(allocator := context.allocator) -> (frame_state: oxr.FrameState, render_info: Render_Layer_Info, view: []oxr.View) {	
-	context.allocator = allocator
-	
-	// Wait for render_frame
-	frame_state = oxr.FrameState {
-		sType = .FRAME_STATE,
-	}
-	wait_info := oxr.FrameWaitInfo {
-		sType = .FRAME_WAIT_INFO,
-	}
-	result := oxr.WaitFrame(vr_ctx.session, &wait_info, &frame_state)
-	oxr_assert(result, "XR Frame state invalid")
-
-	// Begin Frame
-	begin_info := oxr.FrameBeginInfo {
-		sType = .FRAME_BEGIN_INFO,
-	}
-	result = oxr.BeginFrame(vr_ctx.session, &begin_info)
-	oxr_assert(result, "XR frame failed to begin")
-	
-	render_info = Render_Layer_Info {
-		predicted_display_time = frame_state.predictedDisplayTime,
-		layer_projection = {sType = .COMPOSITION_LAYER_PROJECTION},
-	}
-	
-	render_info.layers = make([dynamic]^oxr.CompositionLayerBaseHeader)
-	views := make([]oxr.View, len(vr_ctx.view_config))
-	for &v in views {
-		v.sType = .VIEW
-	}
-	view_state := oxr.ViewState {
-		sType = .VIEW_STATE,
-	}
-	view_locate_info := oxr.ViewLocateInfo {
-		sType                 = .VIEW_LOCATE_INFO,
-		displayTime           = render_info.predicted_display_time,
-		viewConfigurationType = vr_ctx.view_type,
-		space                 = vr_ctx.reference_space,
-	}
-	count: u32
-	result = oxr.LocateViews(
-		vr_ctx.session,
-		&view_locate_info,
-		&view_state,
-		u32(len(views)),
-		&count,
-		&views[0],
-	)
-	oxr_assert(result, "Failed to locate views")
-	resize(&render_info.layer_projection_views, count)
-
-	return frame_state, render_info, views
-}
-
-end_frame :: proc(frame_state: ^oxr.FrameState, render_info: ^Render_Layer_Info, rendered: bool) {
-	assert(frame_state != nil)
-	assert(render_info != nil)
-	
-	render_info.layer_projection.layerFlags = {
-		.BLEND_TEXTURE_SOURCE_ALPHA,
-		.CORRECT_CHROMATIC_ABERRATION,
-	}
-	render_info.layer_projection.space = vr_ctx.reference_space
-	render_info.layer_projection.viewCount = u32(len(render_info.layer_projection_views))
-	render_info.layer_projection.views = &render_info.layer_projection_views[0]
-
-	if rendered {
-		render_info.layer_projection.sType = .COMPOSITION_LAYER_PROJECTION
-		append(&render_info.layers, cast(^oxr.CompositionLayerBaseHeader)(&render_info.layer_projection))
-	}
-	
-	// End Frame
-	end_info := oxr.FrameEndInfo {
-		sType                = .FRAME_END_INFO,
-		displayTime          = frame_state.predictedDisplayTime,
-		environmentBlendMode = vr_ctx.environment_blendmode,
-		layerCount           = u32(len(render_info.layers)),
-		layers               = raw_data(render_info.layers[:]),
-	}
-	result := oxr.EndFrame(vr_ctx.session, &end_info)
-	oxr_assert(result, "Failed to end xr frame")
-}
-
-acquire_next_swapchain_view :: proc(render_info: ^Render_Layer_Info, view: ^oxr.View, image_index: u32) -> vk.ImageView {
-	image_index := image_index
-	
-	swapchain_info := &vr_ctx.swapchain_infos[image_index]
-	aquire_info := oxr.SwapchainImageAcquireInfo {
-		sType = .SWAPCHAIN_IMAGE_ACQUIRE_INFO,
-	}
-	result := oxr.AcquireSwapchainImage(swapchain_info.swapchain, &aquire_info, &image_index)
-	oxr_assert(result, "Failed to aquire image from colour swapchain")
-	wait_info := oxr.SwapchainImageWaitInfo {
-		sType   = .SWAPCHAIN_IMAGE_WAIT_INFO,
-		timeout = i64(max(i32)),
-	}
-	result = oxr.WaitSwapchainImage(swapchain_info.swapchain, &wait_info)
-	oxr_assert(result, "Failed to wait for image from colour swapchain")
-	width := vr_ctx.view_config[image_index].recommendedImageRectWidth
-	height := vr_ctx.view_config[image_index].recommendedImageRectHeight
-	viewport := vk.Viewport {
-		width    = f32(width),
-		height   = f32(height),
-		maxDepth = 1,
-	}
-	scissor := vk.Rect2D {
-		extent = {width, height},
-	}
-	image_rect := oxr.Rect2Di {
-		extent = {i32(width), i32(height)},
-	}
-	sub_image := oxr.SwapchainSubImage {
-		swapchain = swapchain_info.swapchain,
-		imageRect = image_rect,
-	}
-	render_info.layer_projection_views[image_index] = oxr.CompositionLayerProjectionView {
-		sType    = .COMPOSITION_LAYER_PROJECTION_VIEW,
-		pose     = view.pose,
-		fov      = view.fov,
-		subImage = sub_image,
-	}
-
-	return swapchain_info.image_views[image_index]
-}
-
-release_swapchain_image_view :: proc(image_index: u32) {
-	assert(image_index < u32(len(vr_ctx.swapchain_infos)))
-	
-	release_info := oxr.SwapchainImageReleaseInfo {
-		sType = .SWAPCHAIN_IMAGE_RELEASE_INFO,
-	}
-	result := oxr.ReleaseSwapchainImage(vr_ctx.swapchain_infos[image_index].swapchain, &release_info)
-	oxr_assert(result, "Failed to release image back to swapchain")
-}
-
-render_layer :: proc(render_info: ^Render_Layer_Info, session: oxr.Session) -> (rendered: bool) {
-	views := make([]oxr.View, len(vr_ctx.view_config))
-	for &v in views {
-		v.sType = .VIEW
-	}
-	view_state := oxr.ViewState {
-		sType = .VIEW_STATE,
-	}
-	view_locate_info := oxr.ViewLocateInfo {
-		sType                 = .VIEW_LOCATE_INFO,
-		displayTime           = render_info.predicted_display_time,
-		viewConfigurationType = vr_ctx.view_type,
-		space                 = vr_ctx.reference_space,
-	}
-	count: u32
-	result := oxr.LocateViews(
-		session,
-		&view_locate_info,
-		&view_state,
-		u32(len(views)),
-		&count,
-		&views[0],
-	)
-	oxr_assert(result, "Failed to locate views")
-	resize(&render_info.layer_projection_views, count)
-
-	for i in 0 ..< count {
-		image_index: u32
-		swapchain_info := &vr_ctx.swapchain_infos[i]
-		aquire_info := oxr.SwapchainImageAcquireInfo {
-			sType = .SWAPCHAIN_IMAGE_ACQUIRE_INFO,
-		}
-		result = oxr.AcquireSwapchainImage(swapchain_info.swapchain, &aquire_info, &image_index)
-		oxr_assert(result, "Failed to aquire image from colour swapchain")
-		wait_info := oxr.SwapchainImageWaitInfo {
-			sType   = .SWAPCHAIN_IMAGE_WAIT_INFO,
-			timeout = i64(max(i32)),
-		}
-		result = oxr.WaitSwapchainImage(swapchain_info.swapchain, &wait_info)
-		oxr_assert(result, "Failed to wait for image from colour swapchain")
-		width := vr_ctx.view_config[i].recommendedImageRectWidth
-		height := vr_ctx.view_config[i].recommendedImageRectHeight
-		viewport := vk.Viewport {
-			width    = f32(width),
-			height   = f32(height),
-			maxDepth = 1,
-		}
-		scissor := vk.Rect2D {
-			extent = {width, height},
-		}
-		nearZ := 0.05
-		farZ := 100
-		image_rect := oxr.Rect2Di {
-			extent = {i32(width), i32(height)},
-		}
-		sub_image := oxr.SwapchainSubImage {
-			swapchain = swapchain_info.swapchain,
-			imageRect = image_rect,
-		}
-		render_info.layer_projection_views[i] = oxr.CompositionLayerProjectionView {
-			sType    = .COMPOSITION_LAYER_PROJECTION_VIEW,
-			pose     = views[i].pose,
-			fov      = views[i].fov,
-			subImage = sub_image,
-		}
-
-		// Tell Graphics API to begin rendering
-		// core.render_color_vr(swapchain_info.image_views[image_index])
-
-		release_info := oxr.SwapchainImageReleaseInfo {
-			sType = .SWAPCHAIN_IMAGE_RELEASE_INFO,
-		}
-		result = oxr.ReleaseSwapchainImage(swapchain_info.swapchain, &release_info)
-		oxr_assert(result, "Failed to release image back to swapchain")
-	}
-	render_info.layer_projection.layerFlags = {
-		.BLEND_TEXTURE_SOURCE_ALPHA,
-		.CORRECT_CHROMATIC_ABERRATION,
-	}
-	render_info.layer_projection.space = vr_ctx.reference_space
-	render_info.layer_projection.viewCount = u32(len(render_info.layer_projection_views))
-	render_info.layer_projection.views = &render_info.layer_projection_views[0]
-	return true
 }
 
 destroy :: proc() {
@@ -402,30 +148,29 @@ get_swapchain_images_info :: proc() -> (images_info: Swapchain_Images_Info, is_v
 			height = view_config.recommendedImageRectHeight,
 		},
 		format = swapchain_info.swapchain_format,
-		count = u32(len(swapchain_info.image_views))
+		count = u32(len(swapchain_info.images))
 	}
 
 	return images_info, true
 }
 
-get_view_projection :: proc(fov: ^oxr.Fovf, nearz, farz: f32, pose: ^oxr.Posef) -> (m: matrix[4, 4]f32) {
-	tan_left  := la.tan(fov.angleLeft)
-	tan_right := la.tan(fov.angleRight)
-	tan_up    := la.tan(fov.angleUp)
-	tan_down  := la.tan(fov.angleDown)
+get_view_projection :: proc(fov: ^oxr.Fovf, nearz, farz: f32, pose: ^oxr.Posef) -> (view_projection: matrix[4, 4]f32) {
+	
+	left  := la.tan(fov.angleLeft)
+	right := la.tan(fov.angleRight)
+	up    := la.tan(fov.angleUp)
+	down  := la.tan(fov.angleDown)
 
-	tan_width := tan_right - tan_left
-	tan_height := tan_up - tan_down
+	width := right - left
+	height := down - up
+	offset := f32(0)
 
-	m = la.identity(la.Matrix4f32)
-
-	m[0][0] = 2 / tan_width
-	m[1][1] = 2 / tan_height
-	m[2][0] = (tan_right + tan_left) / tan_width
-	m[2][1] = (tan_up + tan_down) / tan_height
-	m[2][2] = -(farz + nearz) / (farz - nearz)
-	m[2][3] = -1
-	m[3][2] = -(2 * farz * nearz) / (farz - nearz)
+	view_projection = {
+		2.0 / width, 0.0, (right + left) / width, 0.0,
+		0.0, 2.0 / height, (up + down) / height, 0.0,
+		0.0, 0.0, -(farz + offset) / (farz - nearz), -(farz * (nearz + offset)) / (farz - nearz),
+		0.0, 0.0, -1.0, 0.0,
+	}
 
 	position: [3]f32 = {pose.position.x, pose.position.y, pose.position.z}
 	orientation := quaternion(
@@ -435,7 +180,122 @@ get_view_projection :: proc(fov: ^oxr.Fovf, nearz, farz: f32, pose: ^oxr.Posef) 
 		kmag = pose.orientation.z
 	)
 
-	transform := la.inverse(la.matrix4_translate_f32(position) * la.matrix4_from_quaternion_f32(orientation))
+	view := la.inverse(la.matrix4_from_quaternion_f32(orientation) * la.matrix4_translate_f32(position))
+	// view := la.inverse(la.matrix4_translate_f32(position) * la.matrix4_from_quaternion_f32(orientation))
 	
-	return m * transform
+	return view_projection * view
+}
+
+begin_frame :: proc() -> (frame_data: OXR_Frame_Data) {
+	frame_data.frame_state = {
+		sType = .FRAME_STATE
+	}
+	frame_wait: oxr.FrameWaitInfo = {
+		sType = .FRAME_WAIT_INFO
+	}
+	result := oxr.WaitFrame(vr_ctx.session, &frame_wait, &frame_data.frame_state)
+	oxr_assert(result, "Failed to wait for vr frame.")
+
+	frame_begin: oxr.FrameBeginInfo = {
+		sType = .FRAME_BEGIN_INFO
+	}
+	result = oxr.BeginFrame(vr_ctx.session, &frame_begin)
+	oxr_assert(result, "Failed to begin vr frame.")
+
+	frame_data.render_info = {
+		layer_projection = {
+			sType = .COMPOSITION_LAYER_PROJECTION,
+			space = vr_ctx.reference_space,
+		}
+	}
+	
+	for i in 0..<vr_ctx.view_count {
+		frame_data.views[i] = {
+			sType = .VIEW
+		}
+	}
+	view_state: oxr.ViewState = {
+		sType = .VIEW_STATE
+	}
+	view_locate_info: oxr.ViewLocateInfo = {
+		sType                 = .VIEW_LOCATE_INFO,
+		viewConfigurationType = .PRIMARY_STEREO,
+		displayTime           = frame_data.frame_state.predictedDisplayTime,
+		space                 = vr_ctx.reference_space,
+	}
+	result = oxr.LocateViews(vr_ctx.session, &view_locate_info, &view_state, vr_ctx.view_count, &vr_ctx.view_submit_count, &frame_data.views[0])
+	oxr_assert(result, "Failed to locate vr views")
+
+	frame_data.submit_count = vr_ctx.view_submit_count
+	for i in 0..<vr_ctx.view_submit_count {
+		swapchain_info := &vr_ctx.swapchain_infos[i]
+		frame_data.render_info.layer_projection_views[i] = {
+			sType    = .COMPOSITION_LAYER_PROJECTION_VIEW,
+			pose     = frame_data.views[i].pose,
+			fov      = frame_data.views[i].fov,
+			subImage = {
+				swapchain       = swapchain_info.swapchain,
+				imageArrayIndex = 0,
+				imageRect       = {
+					offset = {0, 0},
+					extent = {swapchain_info.width, swapchain_info.height}
+				}
+			}
+		}
+	}
+
+	return frame_data
+}
+
+acquire_next_swapchain_image :: proc(submit_index: u32) -> (image: OXR_Image) {
+	assert(submit_index < u32(len(vr_ctx.swapchain_infos)))
+	
+	swapchain_info := &vr_ctx.swapchain_infos[submit_index]
+	image_index: u32
+	acquire_info: oxr.SwapchainImageAcquireInfo = {
+		sType = .SWAPCHAIN_IMAGE_ACQUIRE_INFO
+	}
+	result := oxr.AcquireSwapchainImage(swapchain_info.swapchain, &acquire_info, &image_index)
+	oxr_assert(result, "Failed to acquire vr swapchain image")
+
+	wait_info: oxr.SwapchainImageWaitInfo = {
+		sType   = .SWAPCHAIN_IMAGE_WAIT_INFO,
+		timeout = max(i64)
+	}
+	result = oxr.WaitSwapchainImage(swapchain_info.swapchain, &wait_info)
+	oxr_assert(result, "Failed to wait for vr swapchain image")
+
+	image = swapchain_info.images[image_index]
+	image.extent = {u32(swapchain_info.width), u32(swapchain_info.height)}
+	image.index = image_index
+
+	return image
+}
+
+release_swapchain_image :: proc(submit_index: u32) {
+	assert(submit_index < u32(len(vr_ctx.swapchain_infos)))
+
+	release_info: oxr.SwapchainImageReleaseInfo = {
+		sType = .SWAPCHAIN_IMAGE_RELEASE_INFO,
+	}
+	result := oxr.ReleaseSwapchainImage(vr_ctx.swapchain_infos[submit_index].swapchain, &release_info)
+	oxr_assert(result, "Failed to release vr swapchain image")
+}
+
+end_frame :: proc(frame_data: ^OXR_Frame_Data) {
+	assert(frame_data != nil)
+
+	frame_data.render_info.layer_projection.viewCount = frame_data.submit_count
+	frame_data.render_info.layer_projection.views = &frame_data.render_info.layer_projection_views[0]
+
+	layers := cast(^oxr.CompositionLayerBaseHeader)&frame_data.render_info.layer_projection
+	frame_end: oxr.FrameEndInfo = {
+		sType                = .FRAME_END_INFO,
+		displayTime          = frame_data.frame_state.predictedDisplayTime,
+		environmentBlendMode = vr_ctx.environment_blendmode,
+		layerCount           = frame_data.frame_state.shouldRender ? 1 : 0,
+		layers               = frame_data.frame_state.shouldRender ? &layers : nil
+	}
+	result := oxr.EndFrame(vr_ctx.session, &frame_end)
+	oxr_assert(result, "Failed to end vr frame")
 }
