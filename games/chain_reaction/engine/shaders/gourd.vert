@@ -7,6 +7,7 @@ layout(location = 2) in vec2 a_uv;
 layout(location = 0) out vec3 o_fragment_position;
 layout(location = 1) out vec3 o_normal;
 layout(location = 2) out vec2 o_uv;
+layout(location = 3) out flat uint o_instance_index;
 
 struct Point_Light {
     vec4  position;  
@@ -31,8 +32,8 @@ void main() {
     mat4 model = model_matrices[gl_InstanceIndex];
     gl_Position = view_projection * model * vec4(a_position, 1.0);
     o_fragment_position = (model * vec4(a_position, 1.0)).xyz;
-    // expensive so precompute on cpu
     mat3 normal_matrix = transpose(inverse(mat3(model)));
     o_normal = normal_matrix * a_normal;
     o_uv = a_uv;
+    o_instance_index = gl_InstanceIndex;
 }

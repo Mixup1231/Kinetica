@@ -3,6 +3,7 @@
 layout(location = 0) in vec3 i_fragment_position;
 layout(location = 1) in vec3 i_normal;
 layout(location = 2) in vec2 i_uv;
+layout(location = 3) in flat uint i_instance_index;
 
 layout(location = 0) out vec4 o_color;
 
@@ -22,11 +23,18 @@ layout(binding = 0) readonly buffer cold_ssbo{
 
 layout(binding = 1) readonly buffer hot_ssbo{
     mat4 model_matrices[100];
-    uint texture_types;
+    uvec4 model_textures[100];
 };
 
-layout(binding = 2) uniform sampler2D s_albedo;
-layout(binding = 3) uniform sampler2D s_emissive;
+layout(binding = 2) uniform sampler2D s_one;
+layout(binding = 3) uniform sampler2D s_two;
+layout(binding = 4) uniform sampler2D s_three;
+layout(binding = 5) uniform sampler2D s_four;
+layout(binding = 6) uniform sampler2D s_five;
+layout(binding = 7) uniform sampler2D s_six;
+layout(binding = 8) uniform sampler2D s_seven;
+layout(binding = 9) uniform sampler2D s_eight;
+layout(binding = 10) uniform sampler2D s_nine;
 
 float calculate_attenuation(float distance) {
     float constant  = 1.0;
@@ -52,36 +60,61 @@ vec3 calculate_diffuse() {
     return diffuse;
 }
 
-vec3 calculate_specular() {
-    vec3 specular = vec3(0.0, 0.0, 0.0);
-
-    for (uint i = 0; i < point_light_count; i++) {
-        Point_Light light = point_lights[i];
-        vec3 light_direction = normalize(light.position.xyz - i_fragment_position); 
-        vec3 view_direction = normalize(camera_position.xyz - i_fragment_position);
-        
-        vec3 normal = normalize(i_normal);
-        vec3 reflect_direction = reflect(-light_direction, normal);
-        
-        float specular_strength = pow(max(dot(view_direction, reflect_direction), 0.0), 32);
-        specular += specular_strength * light.color.rgb;        
-        specular *= calculate_attenuation(length(light.position.xyz - i_fragment_position));
-    }
-
-    return specular;
-}
-
 void main() {
+    uint albedo_location = model_textures[i_instance_index][0];
+    uint emissive_location = model_textures[i_instance_index][1];
+
+    vec4 albedo = vec4(1.0, 1.0, 1.0, 1.0);
+    if (albedo_location == 0) {
+        albedo = texture(s_one, i_uv);
+    } else if (albedo_location == 1) {
+        albedo = texture(s_two, i_uv);
+    } else if (albedo_location == 2) {
+        albedo = texture(s_three, i_uv);
+    } else if (albedo_location == 3) {
+        albedo = texture(s_four, i_uv);
+    } else if (albedo_location == 4) {
+        albedo = texture(s_five, i_uv);
+    } else if (albedo_location == 5) {
+        albedo = texture(s_six, i_uv);
+    } else if (albedo_location == 6) {
+        albedo = texture(s_seven, i_uv);
+    } else if (albedo_location == 7) {
+        albedo = texture(s_eight, i_uv);
+    } else if (albedo_location == 8) {
+        albedo = texture(s_nine, i_uv);
+    }
+    
+    vec4 emissive = vec4(0.0, 0.0, 0.0, 1.0);
+    if (emissive_location == 0) {
+        emissive = texture(s_one, i_uv);
+    } else if (emissive_location == 1) {
+        emissive = texture(s_two, i_uv);
+    } else if (emissive_location == 2) {
+        emissive = texture(s_three, i_uv);
+    } else if (emissive_location == 3) {
+        emissive = texture(s_four, i_uv);
+    } else if (emissive_location == 4) {
+        emissive = texture(s_five, i_uv);
+    } else if (emissive_location == 5) {
+        emissive = texture(s_six, i_uv);
+    } else if (emissive_location == 6) {
+        emissive = texture(s_seven, i_uv);
+    } else if (emissive_location == 7) {
+        emissive = texture(s_eight, i_uv);
+    } else if (emissive_location == 8) {
+        emissive = texture(s_nine, i_uv);
+    }
+    
     vec3 ambient = ambient_strength * ambient_color.xyz;
     vec3 diffuse = calculate_diffuse();
-    vec3 specular = calculate_specular();
 
     float distance = length(i_fragment_position - camera_position.xyz);
     float fog_factor = 1.0 - calculate_attenuation(distance);
     vec3 fog_color = vec3(0.0, 0.0, 0.0);
     
-    vec3 result = (ambient + diffuse + specular) * vec3(1.0, 1.0, 1.0);
-    vec3 final_color = mix(result, fog_color, fog_factor);
+    vec4 result = vec4(ambient + diffuse, 1.0) * albedo + emissive;
+    vec4 final_color = mix(result, vec4(fog_color, 1.0), fog_factor);
 
-    o_color = vec4(final_color, 1.0);
+    o_color = final_color;
 }
