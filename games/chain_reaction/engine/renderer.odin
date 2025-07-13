@@ -19,8 +19,8 @@ Shader_Cold_Data :: struct #align(16) {
 
 // NOTE(Mitchell): Remember to pad correctly!
 Shader_Hot_Data :: struct #align(16) {
-	model_matrices:    [Max_Models]matrix[4, 4]f32,
-	texture_types:     Texture_Types,
+	model_matrices: [Max_Models]matrix[4, 4]f32,
+	model_textures: [Max_Models][4]u32,
 }
 
 Shader_Pixel_Data :: struct {
@@ -84,7 +84,6 @@ Renderer :: struct {
 	quad_index_buffer:       core.VK_Buffer,
 	pixel_sampler:           vk.Sampler,
 	pixel_image:             core.VK_Image,
-	vr_pixel_image:          [2]core.VK_Image,
 	pixel_data:              Shader_Pixel_Data,
 	pixel_ubo:               core.VK_Buffer,
 	pixel_descriptor_pool:   vk.DescriptorPool,
@@ -141,7 +140,7 @@ renderer_init :: proc() {
 	color_blend_attachment_state := core.vk_color_blend_attachment_state_create()
 	color_blend_state := core.vk_color_blend_state_create({color_blend_attachment_state})
 
-	descriptor_types: [2+len(Texture_Type)]vk.DescriptorType
+	descriptor_types: [2+Num_Samplers]vk.DescriptorType
 	descriptor_types[0] = .STORAGE_BUFFER
 	descriptor_types[1] = .STORAGE_BUFFER
 	for &type in descriptor_types[1:] do type = .COMBINED_IMAGE_SAMPLER
@@ -319,6 +318,13 @@ renderer_destroy :: proc() {
 	core.vk_descriptor_pool_destroy(pixel_descriptor_pool)
 	core.vk_descriptor_set_layout_destroy(pixel_descriptor_layout)
 	core.vk_graphics_pipeline_destroy(pixel_pipeline, pixel_pipeline_layout)
+	
+	for &array in vr_depth_image {
+		for &image in array do core.vk_image_destroy(&image)
+		delete(array)
+	}
+	for &buffer in vr_cold_ssbo do core.vk_buffer_destroy(&buffer)
+	for &buffer in vr_hot_ssbo do core.vk_buffer_destroy(&buffer)
 	
 	initialised = false
 }
@@ -545,18 +551,7 @@ renderer_init_vr :: proc(
 				{.DEPTH_STENCIL_ATTACHMENT},
 				&vk_allocator
 			)	
-		}
-		
-		vr_pixel_image[i] = core.vk_texture_image_create(
-			.OPTIMAL,
-			{
-				width  = image_details.extent.width,
-				height = image_details.extent.height,
-				depth  = 1
-			},
-			image_details.format,
-			&vk_allocator
-		)	
+		}		
 	}
 
 	vr_initialised = true
@@ -638,15 +633,39 @@ renderer_render_scene_vr:: proc(
 	core.vk_buffer_copy(&vr_cold_ssbo[vr_frame], &cold_data)
 	core.vk_descriptor_set_update_storage_buffer(descriptor_sets[vr_frame], 0, &vr_cold_ssbo[vr_frame])
 
+	sample_count: u32 = 0
 	instance_index, mesh_index: u32
 	for mesh, &entity_array in scene.meshes {
 		instance_ranges[mesh_index][0] = instance_index
 		
+		mesh_hot := resource_manager_get_mesh_hot(mesh)
+
+		albedo_sample, emissive_sample: u32 = Num_Samplers+1, Num_Samplers+1
+		has_albedo, has_emissive: bool
+		if .Albedo in mesh_hot.texture_types {
+			texture := resource_manager_get_texture(mesh, .Albedo)
+			albedo_sample = sample_count
+			core.vk_descriptor_set_update_image(descriptor_sets[vr_frame], 11, &texture.image, texture.sampler)
+			sample_count += 1
+			has_albedo = true
+		}
+
+		if .Emissive in mesh_hot.texture_types {
+			texture := resource_manager_get_texture(mesh, .Emissive)
+			emissive_sample = sample_count
+			core.vk_descriptor_set_update_image(descriptor_sets[vr_frame], emissive_sample, &texture.image, texture.sampler)
+			sample_count += 1
+			has_emissive = true
+		}
+		
 		for entity_id in sparse_array_slice(&entity_array) {
 			entity := sparse_array_get(&scene.entities, entity_id)
 			hot_data.model_matrices[instance_index] = core.transform_get_matrix(&entity.transform)
+			hot_data.model_textures[instance_index][0] = albedo_sample
+			hot_data.model_textures[instance_index][1] = emissive_sample
 			instance_index += 1
 		}
+		
 		instance_ranges[mesh_index][1] = instance_index - instance_ranges[mesh_index][0]
 		mesh_index += 1
 	}
@@ -658,6 +677,7 @@ renderer_render_scene_vr:: proc(
 	mesh_index = 0
 	for mesh, _ in scene.meshes {
 		mesh_hot := resource_manager_get_mesh_hot(mesh)
+		
 		core.vk_command_vertex_buffers_bind(vr_command_buffers[vr_frame], {mesh_hot.vertex_buffer.handle})
 		core.vk_command_index_buffer_bind(vr_command_buffers[vr_frame], mesh_hot.index_buffer.handle)
 		

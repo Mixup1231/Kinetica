@@ -1,5 +1,6 @@
 package engine
 
+import "core:os"
 import "core:mem"
 import "core:log"
 
@@ -133,8 +134,31 @@ resource_manager_load_mesh :: proc(
 	for filepath, texture_type in texture_filepaths {
 		if filepath == "" do continue
 
-		// TODO(Mitchell): load textures
 		mesh_hot.texture_types += {texture_type}
+		
+		texture_file, success := os.read_entire_file_from_filename(filepath)
+		if !success {
+			log.fatal("Invalid texture filepath")
+			os.exit(-1)
+		}
+		defer delete(texture_file)
+		
+		width, height, channels: i32
+		parsed_data := image.load_from_memory(raw_data(texture_file), i32(len(texture_file)), &width, &height, &channels, 4)
+		if channels != 4 {
+			log.fatal("Unsupported texture format")
+			os.exit(-1)
+		}
+		defer image.image_free(parsed_data)
+
+		data := make([]u8, width * height * channels)
+		defer delete(data)
+		mem.copy(raw_data(data), parsed_data, len(data))
+
+		texture := sparse_array_insert(&textures[texture_type], mesh)
+		texture.image = core.vk_texture_image_create(.OPTIMAL, vk.Extent3D{u32(width), u32(height), 1}, .R8G8B8A8_SRGB, &vk_allocator)
+		core.vk_image_copy_staged(transfer_pool, &texture.image, data, &vk_allocator)
+		texture.sampler = core.vk_sampler_create()
 	}
 
 	return mesh
@@ -159,7 +183,19 @@ resource_manager_destroy_mesh :: proc(
 
 	append(&free_meshes, mesh)
 	
-	// TODO(Mitchell): unload textures
+	albedo_array := &textures[.Albedo]
+	if sparse_array_contains(albedo_array, mesh) {
+		texture := sparse_array_get(albedo_array, mesh)
+		core.vk_image_destroy(&texture.image)
+		core.vk_sampler_destroy(texture.sampler)
+	}
+	
+	emissive_array := &textures[.Emissive]
+	if sparse_array_contains(emissive_array, mesh) {
+		texture := sparse_array_get(emissive_array, mesh)
+		core.vk_image_destroy(&texture.image)
+		core.vk_sampler_destroy(texture.sampler)
+	}
 }
 
 resource_manager_get_mesh_cold :: proc(
@@ -184,4 +220,19 @@ resource_manager_get_mesh_hot :: proc(
 	ensure(sparse_array_contains(&mesh_hots, mesh))
 
 	return sparse_array_get(&mesh_hots, mesh)
+}
+
+resource_manager_get_texture :: proc(
+	mesh:         Mesh,
+	texture_type: Texture_Type
+) -> (
+	texture: ^Texture
+) {
+	using resource_manager
+	assert(initialised)
+	
+	texture_array := &textures[texture_type]
+	assert(sparse_array_contains(texture_array, mesh))
+
+	return sparse_array_get(texture_array, mesh)
 }
