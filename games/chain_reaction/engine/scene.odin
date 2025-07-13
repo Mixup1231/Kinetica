@@ -277,9 +277,6 @@ scene_update_physics_entities :: proc(
 			// Gravity
 			if entity.has_exploded{
 				entity.physics.velocity.y -= 1
-				if entity.transform.position.y < 2.1 {
-					return
-				}
 			}
 		}
 	}

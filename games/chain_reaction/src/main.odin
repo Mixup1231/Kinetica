@@ -328,7 +328,7 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene, top: ^engine.Mesh, bot: ^
 }
 
 dist_check :: proc(a:[3]f32, b: [3]f32) -> bool {
-	return  la.vector_length2(b-a) < 10
+	return  la.vector_length2(b-a) < 2
 }
 
 import xr "./../dependencies/openxr_odin/openxr"
