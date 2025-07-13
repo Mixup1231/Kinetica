@@ -277,7 +277,6 @@ scene_update_physics_entities :: proc(
 			if entity.has_exploded{
 				entity.physics.velocity.y -= 1
 				if entity.transform.position.y < 2.1 {
-					scene_destroy_entity(scene, scene.entities.index_to_key[uint(i)], &entity)
 					return
 				}
 			}

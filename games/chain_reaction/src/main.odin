@@ -70,9 +70,6 @@ main :: proc() {
 	defer engine.resource_manager_destroy_mesh(pumpkin_top_mesh)	
 	pumpkin_bot_mesh := engine.resource_manager_load_mesh("games/chain_reaction/assets/models/pumpkin-bot.obj", {})
 	defer engine.resource_manager_destroy_mesh(pumpkin_bot_mesh)	
-	for i in 0..<20 {
-		create_pumpkin(&scene, pumpkin_top_mesh, pumpkin_bot_mesh)
-	}
 
 	init_input()
 	
@@ -81,6 +78,7 @@ main :: proc() {
 	start, end: time.Tick
 	axis: [3]f32 = {1, 0, 0}
 	camera: la.Quaternionf32
+	created: bool
 	for !core.window_should_close() {
 		core.window_poll()
 		
@@ -102,11 +100,17 @@ main :: proc() {
 
 		dt = f32(time.duration_seconds(time.tick_diff(start, end)))
 		start = time.tick_now()
-		app_time += dt		
+		app_time += dt
+
+		if !created && app_time > 2 {
+			for i in 0..<20 {
+				create_pumpkin(&scene, pumpkin_top_mesh, pumpkin_bot_mesh)
+			}
+			created = true
+		}
 		
 		engine.scene_update_entities(&scene, dt)
 		engine.scene_update_physics_entities(&scene, dt)
-		check_pumpkin_collisions(&scene, &pumpkin_top_mesh, &pumpkin_bot_mesh)
 
 
 		if get_input() {
@@ -153,6 +157,7 @@ main :: proc() {
 			frame_data := vr.begin_frame()
 			if !frame_data.frame_state.shouldRender {
 				vr.end_frame(&frame_data)
+				end = time.tick_now()
 				continue
 			}
 			
@@ -179,7 +184,7 @@ main :: proc() {
 		end = time.tick_now()
 
 		
-		
+		check_pumpkin_collisions(&scene, &pumpkin_top_mesh, &pumpkin_bot_mesh)
 	}
 }
 
@@ -196,7 +201,7 @@ create_pumpkin :: proc(scene: ^engine.Scene, pumpkin_top_mesh: engine.Mesh, pump
 	top, e1 := engine.scene_insert_entity(scene)
 	e1.tag = .Pumpkin
 	transform := core.transform_create()
-	core.transform_translate(&transform, {spawn.x, 1.5  + 2*(math.abs(spawn.x) + math.abs(spawn.z))/f32(range), spawn.z})
+	core.transform_translate(&transform, {spawn.x, 1.5  + (math.abs(spawn.x) + math.abs(spawn.z))/f32(range), spawn.z})
 	core.transform_look_at(&transform, {0, 2, 0})
 	core.transform_rotate(&transform, {1, 0, 0}, la.PI)
 	engine.scene_register_mesh_component(scene, top, pumpkin_top_mesh, transform)
@@ -299,10 +304,15 @@ check_pumpkin_collisions :: proc(scene: ^engine.Scene, top: ^engine.Mesh, bot: ^
 		}
 
 		if entity.transform.position.y < -1 {
-			engine.scene_destroy_entity(scene, entity.id, &entity)
-			if entity.has_collided {
-				create_pumpkin(scene, top^, bot^, entity.transform.position)
+			if !entity.has_collided {
+				create_pumpkin(scene, top^, bot^, {entity.transform.position.x, 5, entity.transform.position.z})
+				entity.has_collided = true
 			}
+		}
+		if entity.transform.position.y < -100 {	
+			engine.scene_destroy_entity(scene, entity.id, &entity)
+			log.info("Destroyed")
+			return
 		}
 		for &pumpkin, j in engine.sparse_array_slice(&scene.entities) {
 			if pumpkin.tag == .Pumpkin && !pumpkin.has_exploded {
